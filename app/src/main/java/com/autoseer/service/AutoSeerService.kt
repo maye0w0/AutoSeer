@@ -1,0 +1,198 @@
+package com.autoseer.service
+
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.Service
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ServiceInfo
+import android.media.projection.MediaProjection
+import android.media.projection.MediaProjectionManager
+import android.os.Build
+import android.os.IBinder
+import android.util.Log
+import com.autoseer.R
+import com.autoseer.capture.ScreenCaptureManager
+import com.autoseer.core.AndroidLogger
+import com.autoseer.core.AssetTemplates
+import com.autoseer.core.OpenCvMatcher
+import com.autoseer.input.GestureAccessibilityService
+import com.autoseer.libautomata.IGestureService
+import com.autoseer.libautomata.Location
+import com.autoseer.overlay.ControlOverlay
+import com.autoseer.core.SeerPrefs
+import com.autoseer.runner.ScriptRunner
+import com.autoseer.scripts.BattleScript
+import com.autoseer.scripts.BattlePlanParser
+
+/**
+ * Foreground service that owns the whole automation runtime: MediaProjection
+ * capture, the floating control overlay, and the [ScriptRunner]. Started by
+ * [com.autoseer.ui.MainActivity] once the user grants screen capture.
+ */
+class AutoSeerService : Service() {
+
+    private var capture: ScreenCaptureManager? = null
+    private var overlay: ControlOverlay? = null
+    private var runner: ScriptRunner? = null
+
+    // Resolves the accessibility service lazily so it works once it connects.
+    private val gestures = object : IGestureService {
+        override fun click(location: Location, durationMs: Long) {
+            val svc = GestureAccessibilityService.instance
+            if (svc == null) Log.w(TAG, "無障礙服務未連線，無法點擊") else svc.click(location, durationMs)
+        }
+        override fun swipe(from: Location, to: Location, durationMs: Long) {
+            GestureAccessibilityService.instance?.swipe(from, to, durationMs)
+        }
+    }
+
+    override fun onBind(intent: Intent?): IBinder? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            stopEverything()
+            return START_NOT_STICKY
+        }
+
+        startForegroundInternal()
+
+        val resultCode = intent?.getIntExtra(EXTRA_RESULT_CODE, 0) ?: 0
+        val data: Intent? = if (Build.VERSION.SDK_INT >= 33) {
+            intent?.getParcelableExtra(EXTRA_DATA, Intent::class.java)
+        } else {
+            @Suppress("DEPRECATION") intent?.getParcelableExtra(EXTRA_DATA)
+        }
+        if (resultCode == 0 || data == null) {
+            Log.e(TAG, "缺少螢幕擷取授權資料，停止服務")
+            stopEverything()
+            return START_NOT_STICKY
+        }
+
+        setup(resultCode, data)
+        return START_NOT_STICKY
+    }
+
+    private fun setup(resultCode: Int, data: Intent) {
+        val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        val projection: MediaProjection = mpm.getMediaProjection(resultCode, data)
+
+        val metrics = resources.displayMetrics
+        val capture = ScreenCaptureManager(
+            projection = projection,
+            deviceWidth = metrics.widthPixels,
+            deviceHeight = metrics.heightPixels,
+            densityDpi = metrics.densityDpi,
+        ).also { it.start() }
+        this.capture = capture
+
+        val overlay = ControlOverlay(
+            context = this,
+            onStart = { startScript() },
+            onStop = { runner?.stop() },
+        )
+        this.overlay = overlay
+        val logger = AndroidLogger(onLine = { line -> overlay.setStatus(line) })
+
+        runner = ScriptRunner(
+            screenshotProvider = capture,
+            matcher = OpenCvMatcher(),
+            gestures = gestures,
+            logger = logger,
+            onStateChange = { running -> overlay.setRunning(running) },
+        )
+        overlay.show()
+        Log.i(TAG, "AutoSeerService 就緒：device=${metrics.widthPixels}x${metrics.heightPixels}")
+    }
+
+    private fun startScript() {
+        val runner = runner ?: return
+        if (!GestureAccessibilityService.isConnected) {
+            overlay?.setStatus("⚠ 無障礙服務未連線，無法點擊。請到設定開啟後再試")
+            Log.w(TAG, "無障礙服務未連線，取消啟動腳本")
+            return
+        }
+        val templates = AssetTemplates(this)
+        val parsed = BattlePlanParser.parse(
+            text = SeerPrefs.planText(this),
+            maxBattles = SeerPrefs.maxBattles(this),
+            healBeforeBattle = SeerPrefs.healBeforeBattle(this),
+            advanceMap = SeerPrefs.advanceMap(this),
+            defaultSlot = SeerPrefs.defaultSlot(this),
+            startStage = SeerPrefs.startStage(this),
+            maxRetriesPerStage = SeerPrefs.maxRetries(this),
+        )
+        parsed.warnings.forEach { Log.w(TAG, "計畫解析警告：$it") }
+        overlay?.setStatus("計畫 ${BattlePlanParser.describe(parsed.plan)}")
+        runner.start { api -> BattleScript(api, templates, parsed.plan) }
+    }
+
+    private fun startForegroundInternal() {
+        val channelId = "autoseer_service"
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val nm = getSystemService(NotificationManager::class.java)
+            if (nm.getNotificationChannel(channelId) == null) {
+                nm.createNotificationChannel(
+                    NotificationChannel(
+                        channelId,
+                        getString(R.string.notif_channel),
+                        NotificationManager.IMPORTANCE_LOW,
+                    )
+                )
+            }
+        }
+        val notification: Notification = Notification.Builder(this, channelId)
+            .setContentTitle(getString(R.string.notif_title))
+            .setContentText(getString(R.string.notif_text))
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .build()
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIF_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION,
+            )
+        } else {
+            startForeground(NOTIF_ID, notification)
+        }
+    }
+
+    private fun stopEverything() {
+        runner?.stop()
+        overlay?.hide()
+        capture?.release()
+        runner = null
+        overlay = null
+        capture = null
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        } else {
+            @Suppress("DEPRECATION") stopForeground(true)
+        }
+        stopSelf()
+    }
+
+    override fun onDestroy() {
+        stopEverything()
+        super.onDestroy()
+    }
+
+    companion object {
+        private const val TAG = "AutoSeer"
+        private const val NOTIF_ID = 1001
+        const val EXTRA_RESULT_CODE = "result_code"
+        const val EXTRA_DATA = "result_data"
+        const val ACTION_STOP = "com.autoseer.action.STOP"
+
+        fun startIntent(context: Context, resultCode: Int, data: Intent): Intent =
+            Intent(context, AutoSeerService::class.java).apply {
+                putExtra(EXTRA_RESULT_CODE, resultCode)
+                putExtra(EXTRA_DATA, data)
+            }
+
+        fun stopIntent(context: Context): Intent =
+            Intent(context, AutoSeerService::class.java).apply { action = ACTION_STOP }
+    }
+}

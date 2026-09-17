@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AutoSeer</string>
+    <string name="accessibility_label">AutoSeer 手勢服務</string>
+    <string name="accessibility_description">允許 AutoSeer 代替你點擊與滑動螢幕，以自動進行《賽爾號：巔峰之戰》的操作。</string>
+
+    <string name="title_setup">AutoSeer 設定</string>
+    <string name="step_accessibility">1. 開啟無障礙服務（手勢點擊）</string>
+    <string name="step_overlay">2. 允許顯示在其他 App 上層（懸浮控制列）</string>
+    <string name="step_capture">3. 授權螢幕擷取並啟動</string>
+    <string name="btn_open_accessibility">開啟無障礙設定</string>
+    <string name="btn_grant_overlay">授權懸浮視窗</string>
+    <string name="btn_start">授權螢幕擷取並啟動</string>
+    <string name="btn_stop">停止服務</string>
+
+    <string name="status_accessibility_on">無障礙服務：已開啟</string>
+    <string name="status_accessibility_off">無障礙服務：未開啟</string>
+    <string name="status_overlay_on">懸浮視窗：已授權</string>
+    <string name="status_overlay_off">懸浮視窗：未授權</string>
+
+    <string name="notif_channel">AutoSeer 服務</string>
+    <string name="notif_title">AutoSeer 執行中</string>
+    <string name="notif_text">螢幕擷取與自動化已啟動</string>
+
+    <string name="overlay_start">開始</string>
+    <string name="overlay_stop">停止</string>
+    <string name="overlay_idle">待命</string>
+    <string name="overlay_running">執行中</string>
+
+    <string name="disclaimer">本工具僅供個人研究/學習用途。遊戲自動化可能違反服務條款，使用風險自負。</string>
+
+    <string name="app_subtitle">《賽爾號：巔峰之戰》自動化</string>
+    <string name="perm_title">權限</string>
+    <string name="plan_title">技能計畫</string>
+    <string name="plan_desc">格式：關卡用 ;　步驟用 ,　　技能 1=圓形/2~5=矩形　Switch N=換精靈N　X*N=狂點X直到陣亡</string>
+    <string name="plan_example">例：3,1 ; Switch 2,1*N,Switch 3,4*N　→　第1關 用3再用1；第2關 上精靈2狂點1到陣亡→上精靈3狂點4到陣亡</string>
+    <string name="plan_hint">留空＝每回合都用「預設技能格」</string>
+    <string name="opt_title">選項</string>
+    <string name="opt_max">清關場數上限</string>
+    <string name="opt_start">起始關卡（中途續跑用，第1關填1）</string>
+    <string name="opt_retries">每關撤退重試上限（0＝無限）</string>
+    <string name="opt_default_slot">預設技能格 (1–5)</string>
+    <string name="opt_heal">戰前按「精靈恢復」</string>
+    <string name="opt_advance">沿關卡地圖推進</string>
+    <string name="btn_save">儲存設定</string>
+    <string name="saved">已儲存設定</string>
+
+    <string name="editor_open">開啟視覺化技能編輯器</string>
+    <string name="editor_title">技能編輯器</string>
+    <string name="editor_hint">點 技能格(1~5) 或 動作鈕(6戰鬥/7道具/8精靈/9撤退) 加入此關順序</string>
+    <string name="stage_prev">上一關</string>
+    <string name="stage_next">下一關 ＋</string>
+    <string name="editor_undo">刪除上一個</string>
+    <string name="editor_clear">清空本關</string>
+    <string name="editor_done">完成</string>
+    <string name="seq_empty">（尚未設定，將用預設技能格）</string>
+    <string name="editor_to_pet">切換到：換精靈頁</string>
+    <string name="editor_to_skill">切換到：技能頁</string>
+    <string name="editor_hint_pet">點精靈(1~6)加入「換精靈」動作(執行時會自動 點精靈→選取→向上拖曳出戰)</string>
+    <string name="preset_title">載入關卡預設（會覆蓋上方計畫）：</string>
+    <string name="preset_loaded">已載入預設</string>
+</resources>

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.AutoSeer" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/seer_primary</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="android:colorBackground">@color/bg</item>
+        <item name="android:windowBackground">@color/bg</item>
+        <item name="colorSurface">@color/card</item>
+    </style>
+</resources>

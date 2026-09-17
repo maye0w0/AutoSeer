@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Simple robot-eye "A" glyph on the transparent foreground layer. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,30 L72,78 L62,78 L58,66 L50,66 L46,78 L36,78 Z M53,58 L55,58 L54,52 Z" />
+    <path
+        android:fillColor="#00C853"
+        android:pathData="M54,40m-6,0a6,6 0,1 1,12 0a6,6 0,1 1,-12 0" />
+</vector>
