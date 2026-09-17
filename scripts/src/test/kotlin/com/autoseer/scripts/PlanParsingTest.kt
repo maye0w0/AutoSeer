@@ -48,4 +48,40 @@ class PlanParsingTest {
         val back = BattlePlanParser.toStages(text)
         assertEquals(listOf(listOf(3, 12, 1)), back)
     }
+
+    @Test
+    fun serializeStepsPreservesUntilDefeat() {
+        val stages = listOf(
+            listOf(
+                Step(SeerLayout.PET_CODE_BASE + 2),  // Switch 2
+                Step(1, untilDefeat = true),         // 1*N
+                Step(SeerLayout.PET_CODE_BASE + 3),  // Switch 3
+                Step(4, untilDefeat = true),         // 4*N
+            ),
+        )
+        val text = BattlePlanParser.serializeSteps(stages)
+        assertEquals("Switch 2, 1*N, Switch 3, 4*N", text)
+    }
+
+    @Test
+    fun editorStepRoundTripKeepsUntilDefeatForEveryPreset() {
+        // Regression: the old codes-only editor model dropped *N, silently
+        // downgrading X*N to a single cast when a preset was opened and saved.
+        for (preset in SeerPresets.ALL) {
+            val original = BattlePlanParser.parse(preset.plan).plan
+            // Load into the step-aware editor model, then serialize back out.
+            val editorModel = BattlePlanParser.toStepStages(preset.plan)
+            val reSaved = BattlePlanParser.serializeSteps(editorModel)
+            val reparsed = BattlePlanParser.parse(reSaved).plan
+
+            assertEquals("${preset.name} 關數應一致", original.stages.size, reparsed.stages.size)
+            original.stages.forEachIndexed { si, stage ->
+                assertEquals(
+                    "${preset.name} 關${si + 1} 步驟（含 *N）應完整往返",
+                    stage.steps,
+                    reparsed.stages[si].steps,
+                )
+            }
+        }
+    }
 }

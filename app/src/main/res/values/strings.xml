@@ -57,6 +57,7 @@
     <string name="editor_to_pet">切換到：換精靈頁</string>
     <string name="editor_to_skill">切換到：技能頁</string>
     <string name="editor_hint_pet">點精靈(1~6)加入「換精靈」動作(執行時會自動 點精靈→選取→向上拖曳出戰)</string>
+    <string name="editor_until_defeat">加入時標記 *N（狂點此技至陣亡再換下一步）</string>
     <string name="preset_title">載入關卡預設（會覆蓋上方計畫）：</string>
     <string name="preset_loaded">已載入預設</string>
 </resources>

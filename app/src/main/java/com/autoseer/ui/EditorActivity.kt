@@ -7,18 +7,23 @@ import com.autoseer.R
 import com.autoseer.core.SeerPrefs
 import com.autoseer.databinding.ActivityEditorBinding
 import com.autoseer.scripts.BattlePlanParser
+import com.autoseer.scripts.SeerLayout
+import com.autoseer.scripts.Step
 
 /**
  * Visual skill-plan editor: tap the skill regions (1..5) on a mock battle screen
  * to build each stage's per-turn cast order, switch stages, and save. Writes the
  * same plan-string format used by the text field and [BattlePlanParser].
+ *
+ * Casts can be marked `*N`（狂點至陣亡）via the [switchUntil] toggle; the marker
+ * round-trips through save/load so a preset's tactics survive being edited here.
  */
 class EditorActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityEditorBinding
 
-    // stages[stageIndex] = ordered list of skill slots, one per turn
-    private val stages = mutableListOf<MutableList<Int>>()
+    // stages[stageIndex] = ordered list of steps, one per turn (carries *N)
+    private val stages = mutableListOf<MutableList<Step>>()
     private var current = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -29,7 +34,9 @@ class EditorActivity : AppCompatActivity() {
         loadFromPrefs()
 
         binding.editorView.onTap = { code ->
-            stages[current].add(code)
+            // *N only means anything for casts; pet switches never repeat.
+            val until = binding.switchUntil.isChecked && !SeerLayout.isPetCode(code)
+            stages[current].add(Step(code, untilDefeat = until))
             render()
         }
         binding.btnMode.setOnClickListener { toggleMode() }
@@ -60,7 +67,7 @@ class EditorActivity : AppCompatActivity() {
     }
 
     private fun loadFromPrefs() {
-        val loaded = BattlePlanParser.toStages(SeerPrefs.planText(this))
+        val loaded = BattlePlanParser.toStepStages(SeerPrefs.planText(this))
         stages.clear()
         loaded.forEach { stages.add(it.toMutableList()) }
         if (stages.isEmpty()) stages.add(mutableListOf())
@@ -73,14 +80,16 @@ class EditorActivity : AppCompatActivity() {
         binding.sequenceLabel.text = if (turns.isEmpty()) {
             getString(R.string.seq_empty)
         } else {
-            turns.mapIndexed { i, s -> "回合${i + 1}:${com.autoseer.scripts.SeerLayout.labelFor(s)}" }
-                .joinToString("  →  ")
+            turns.mapIndexed { i, s ->
+                val mark = if (s.untilDefeat) "*" else ""
+                "回合${i + 1}:${SeerLayout.labelFor(s.code)}$mark"
+            }.joinToString("  →  ")
         }
     }
 
     private fun save() {
         val trimmed = stages.dropLastWhile { it.isEmpty() }
-        val text = BattlePlanParser.serialize(trimmed)
+        val text = BattlePlanParser.serializeSteps(trimmed)
         SeerPrefs.save(
             ctx = this,
             planText = text,
