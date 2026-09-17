@@ -13,10 +13,12 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import com.autoseer.R
+import android.graphics.Bitmap
 import com.autoseer.capture.ScreenCaptureManager
 import com.autoseer.core.AndroidLogger
-import com.autoseer.core.AssetTemplates
+import com.autoseer.core.DeviceTemplates
 import com.autoseer.core.OpenCvMatcher
+import com.autoseer.core.SeerStorage
 import com.autoseer.input.GestureAccessibilityService
 import com.autoseer.libautomata.IGestureService
 import com.autoseer.libautomata.Location
@@ -25,6 +27,9 @@ import com.autoseer.core.ScriptStore
 import com.autoseer.runner.ScriptRunner
 import com.autoseer.scripts.BattleScript
 import com.autoseer.scripts.BattlePlanParser
+import com.autoseer.scripts.ProbeScript
+import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Foreground service that owns the whole automation runtime: MediaProjection
@@ -91,6 +96,8 @@ class AutoSeerService : Service() {
             context = this,
             onStart = { startScript() },
             onStop = { runner?.stop() },
+            onCapture = { captureFrame() },
+            onProbe = { probeDetection() },
         )
         this.overlay = overlay
         val logger = AndroidLogger(onLine = { line -> overlay.setStatus(line) })
@@ -113,7 +120,7 @@ class AutoSeerService : Service() {
             Log.w(TAG, "無障礙服務未連線，取消啟動腳本")
             return
         }
-        val templates = AssetTemplates(this)
+        val templates = DeviceTemplates(this)
         ScriptStore.ensureSeeded(this)
         val script = ScriptStore.selected(this)
         if (script == null) {
@@ -133,6 +140,32 @@ class AutoSeerService : Service() {
         parsed.warnings.forEach { Log.w(TAG, "計畫解析警告：$it") }
         overlay?.setStatus("腳本「${script.displayName}」 ${BattlePlanParser.describe(parsed.plan)}")
         runner.start { api -> BattleScript(api, templates, parsed.plan) }
+    }
+
+    /** Save the current normalized color frame to <externalFilesDir>/captures for cropping into templates. */
+    private fun captureFrame() {
+        val cap = capture ?: run { overlay?.setStatus("尚未就緒，無法擷取"); return }
+        Thread {
+            try {
+                val bmp = cap.captureColorBitmap()
+                val dir = SeerStorage.capturesDir(this)
+                val file = File(dir, "cap_${System.currentTimeMillis()}.png")
+                FileOutputStream(file).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                bmp.recycle()
+                Log.i(TAG, "已存畫面：${file.absolutePath}")
+                overlay?.setStatus("已存畫面：${file.name}\n${dir.absolutePath}")
+            } catch (e: Throwable) {
+                Log.e(TAG, "存畫面失敗", e)
+                overlay?.setStatus("存畫面失敗：${e.message}")
+            }
+        }.start()
+    }
+
+    /** Run the detection probe: report each template's match score without tapping anything. */
+    private fun probeDetection() {
+        val runner = runner ?: return
+        overlay?.setStatus("偵測測試中…（結果見狀態列/Logcat）")
+        runner.start { api -> ProbeScript(api, DeviceTemplates(this)) }
     }
 
     private fun startForegroundInternal() {

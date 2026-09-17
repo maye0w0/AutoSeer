@@ -22,6 +22,8 @@ class ControlOverlay(
     private val context: Context,
     private val onStart: () -> Unit,
     private val onStop: () -> Unit,
+    private val onCapture: () -> Unit = {},
+    private val onProbe: () -> Unit = {},
 ) {
     private val windowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -49,8 +51,21 @@ class ControlOverlay(
             text = "開始"
             setOnClickListener { toggle() }
         }
+        val tools = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        val captureButton = Button(context).apply {
+            text = "存畫面"
+            setOnClickListener { onCapture() }
+        }
+        val probeButton = Button(context).apply {
+            text = "測試偵測"
+            setOnClickListener { onProbe() }
+        }
+        tools.addView(captureButton)
+        tools.addView(probeButton)
+
         container.addView(statusText)
         container.addView(toggleButton)
+        container.addView(tools)
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY

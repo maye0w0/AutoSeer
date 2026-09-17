@@ -62,6 +62,16 @@ class ScreenCaptureManager(
     override fun normalizedSize(): Size = Size(normalizedWidth, normalizedHeight)
     override fun deviceSize(): Size = Size(deviceWidth, deviceHeight)
 
+    /**
+     * A viewable color snapshot at the normalized size (same scaling the matcher
+     * sees), for template capture / debugging. Caller owns the returned bitmap.
+     * Runs the same frame acquisition as [takeScreenshot], so call off the UI thread.
+     */
+    fun captureColorBitmap(): Bitmap {
+        val src = acquireBitmap()
+        return Bitmap.createScaledBitmap(src, normalizedWidth, normalizedHeight, true)
+    }
+
     override fun takeScreenshot(): IPattern {
         val bitmap = acquireBitmap()
         val rgba = Mat()
