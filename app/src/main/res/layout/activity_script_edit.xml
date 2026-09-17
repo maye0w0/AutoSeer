@@ -18,56 +18,7 @@
             android:orientation="vertical"
             android:padding="16dp">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/app_name"
-                android:textColor="@color/white"
-                android:textSize="26sp"
-                android:textStyle="bold" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/app_subtitle"
-                android:textColor="@color/text_secondary"
-                android:paddingBottom="12dp" />
-
-            <!-- 周回腳本入口 -->
-            <com.google.android.material.card.MaterialCardView
-                style="@style/Widget.Material3.CardView.Filled"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                app:cardBackgroundColor="@color/card"
-                app:cardCornerRadius="14dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <TextView
-                        android:id="@+id/currentScript"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/home_current"
-                        android:textColor="@color/white"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnScripts"
-                        style="@style/Widget.Material3.Button.TonalButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:text="@string/home_scripts" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- 權限 -->
+            <!-- 腳本名稱 / 備註 -->
             <com.google.android.material.card.MaterialCardView
                 style="@style/Widget.Material3.CardView.Filled"
                 android:layout_width="match_parent"
@@ -85,116 +36,110 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="@string/perm_title"
-                        android:textColor="@color/white"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:paddingBottom="8dp" />
-
-                    <TextView
-                        android:id="@+id/statusAccessibility"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/text_secondary"
-                        android:text="@string/status_accessibility_off" />
-
-                    <TextView
-                        android:id="@+id/statusOverlay"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textColor="@color/text_secondary"
-                        android:text="@string/status_overlay_off"
-                        android:paddingBottom="8dp" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnAccessibility"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/btn_open_accessibility" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnOverlay"
-                        style="@style/Widget.Material3.Button.OutlinedButton"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/btn_grant_overlay" />
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- 技能計畫 -->
-            <com.google.android.material.card.MaterialCardView
-                style="@style/Widget.Material3.CardView.Filled"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                app:cardBackgroundColor="@color/card"
-                app:cardCornerRadius="14dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/plan_title"
-                        android:textColor="@color/white"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/plan_desc"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp"
-                        android:paddingTop="6dp" />
+                        android:text="@string/script_name"
+                        android:textColor="@color/seer_accent"
+                        android:textSize="14sp" />
 
                     <EditText
-                        android:id="@+id/planInput"
+                        android:id="@+id/editName"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:minLines="2"
-                        android:gravity="top|start"
-                        android:inputType="textMultiLine"
+                        android:inputType="text"
                         android:textColor="@color/white"
                         android:textColorHint="@color/text_secondary"
-                        android:hint="@string/plan_hint"
-                        android:background="@android:color/transparent"
-                        android:paddingTop="8dp" />
+                        android:hint="@string/script_name_hint" />
 
                     <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/script_note"
+                        android:textColor="@color/seer_accent"
+                        android:textSize="14sp"
+                        android:paddingTop="10dp" />
+
+                    <EditText
+                        android:id="@+id/editNote"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="@string/plan_example"
+                        android:inputType="textMultiLine"
+                        android:minLines="1"
+                        android:textColor="@color/white"
+                        android:textColorHint="@color/text_secondary"
+                        android:hint="@string/script_note_hint" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 技能順序 -->
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.Material3.CardView.Filled"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardBackgroundColor="@color/card"
+                app:cardCornerRadius="14dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/script_skill_order"
+                        android:textColor="@color/white"
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/skillOrderSummary"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="@string/skill_not_recorded"
                         android:textColor="@color/text_secondary"
-                        android:textSize="11sp"
+                        android:textSize="13sp"
                         android:paddingTop="6dp" />
 
                     <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnEditor"
+                        android:id="@+id/btnOpenEditor"
                         style="@style/Widget.Material3.Button.TonalButton"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
                         android:text="@string/editor_open" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 技能格顯示名稱 -->
+            <com.google.android.material.card.MaterialCardView
+                style="@style/Widget.Material3.CardView.Filled"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                app:cardBackgroundColor="@color/card"
+                app:cardCornerRadius="14dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
 
                     <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="@string/preset_title"
-                        android:textColor="@color/text_secondary"
-                        android:textSize="12sp"
-                        android:paddingTop="10dp" />
-
-                    <LinearLayout
-                        android:id="@+id/presetContainer"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:orientation="vertical" />
+                        android:text="@string/script_skill_names_title"
+                        android:textColor="@color/white"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <LinearLayout
+                        android:id="@+id/skillNamesContainer"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:paddingTop="4dp" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -338,18 +283,16 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <TextView
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDeleteScript"
+                style="@style/Widget.Material3.Button.TextButton"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="@string/disclaimer"
-                android:textColor="@color/text_secondary"
-                android:textSize="12sp"
-                android:paddingTop="4dp"
-                android:paddingBottom="8dp" />
+                android:text="@string/script_delete" />
         </LinearLayout>
     </ScrollView>
 
-    <!-- 底部動作列 -->
+    <!-- 底部：儲存 / 設為使用中 -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -358,8 +301,8 @@
         android:padding="10dp">
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnSave"
-            style="@style/Widget.Material3.Button.TonalButton"
+            android:id="@+id/btnSaveScript"
+            style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
@@ -367,21 +310,12 @@
             android:text="@string/btn_save" />
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnStop"
-            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:id="@+id/btnSetActive"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginEnd="6dp"
-            android:text="@string/btn_stop" />
-
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnStart"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1.4"
+            android:layout_weight="1.2"
             app:backgroundTint="@color/seer_accent"
             android:textColor="@color/white"
-            android:text="@string/btn_start" />
+            android:text="@string/script_set_active" />
     </LinearLayout>
 </LinearLayout>

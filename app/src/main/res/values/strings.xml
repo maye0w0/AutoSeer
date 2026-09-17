@@ -60,4 +60,33 @@
     <string name="editor_until_defeat">加入時標記 *N（狂點此技至陣亡再換下一步）</string>
     <string name="preset_title">載入關卡預設（會覆蓋上方計畫）：</string>
     <string name="preset_loaded">已載入預設</string>
+
+    <!-- 多腳本管理 -->
+    <string name="home_scripts">周回腳本（多腳本管理）</string>
+    <string name="home_current">目前腳本：%1$s</string>
+    <string name="script_list_title">周回腳本</string>
+    <string name="script_export">匯出腳本</string>
+    <string name="script_import">匯入腳本</string>
+    <string name="script_add">＋ 新增腳本</string>
+    <string name="script_new_name">新腳本</string>
+    <string name="script_default_name">預設</string>
+    <string name="script_edit_title">編輯腳本</string>
+    <string name="script_name">腳本名稱</string>
+    <string name="script_name_hint">為這個腳本命名</string>
+    <string name="script_note">備註</string>
+    <string name="script_note_hint">Add a note</string>
+    <string name="script_skill_order">技能順序</string>
+    <string name="skill_not_recorded">尚未設定 — 開啟視覺化編輯器</string>
+    <string name="script_skill_names_title">技能格顯示名稱（選填；執行仍以編號 1~5 進行）</string>
+    <string name="script_skill_name_hint">技能格%1$d</string>
+    <string name="script_set_active">設為使用中</string>
+    <string name="script_delete">刪除腳本</string>
+    <string name="script_saved">已儲存腳本</string>
+    <string name="script_deleted">已刪除腳本</string>
+    <string name="script_activated">已設為使用中</string>
+    <string name="export_copied">已複製 %1$d 個腳本的 JSON 到剪貼簿</string>
+    <string name="import_ok">已從剪貼簿匯入 %1$d 個腳本</string>
+    <string name="import_fail">剪貼簿內容不是有效的腳本 JSON</string>
+    <string name="import_empty">剪貼簿是空的</string>
+    <string name="no_scripts">尚無腳本，點上方「＋ 新增腳本」建立</string>
 </resources>

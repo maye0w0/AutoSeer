@@ -21,7 +21,7 @@ import com.autoseer.input.GestureAccessibilityService
 import com.autoseer.libautomata.IGestureService
 import com.autoseer.libautomata.Location
 import com.autoseer.overlay.ControlOverlay
-import com.autoseer.core.SeerPrefs
+import com.autoseer.core.ScriptStore
 import com.autoseer.runner.ScriptRunner
 import com.autoseer.scripts.BattleScript
 import com.autoseer.scripts.BattlePlanParser
@@ -114,17 +114,24 @@ class AutoSeerService : Service() {
             return
         }
         val templates = AssetTemplates(this)
+        ScriptStore.ensureSeeded(this)
+        val script = ScriptStore.selected(this)
+        if (script == null) {
+            overlay?.setStatus("⚠ 尚未設定任何腳本，請先到「周回腳本」新增")
+            Log.w(TAG, "無選取腳本，取消啟動")
+            return
+        }
         val parsed = BattlePlanParser.parse(
-            text = SeerPrefs.planText(this),
-            maxBattles = SeerPrefs.maxBattles(this),
-            healBeforeBattle = SeerPrefs.healBeforeBattle(this),
-            advanceMap = SeerPrefs.advanceMap(this),
-            defaultSlot = SeerPrefs.defaultSlot(this),
-            startStage = SeerPrefs.startStage(this),
-            maxRetriesPerStage = SeerPrefs.maxRetries(this),
+            text = script.planText,
+            maxBattles = script.maxBattles,
+            healBeforeBattle = script.healBeforeBattle,
+            advanceMap = script.advanceMap,
+            defaultSlot = script.defaultSlot,
+            startStage = script.startStage,
+            maxRetriesPerStage = script.maxRetries,
         )
         parsed.warnings.forEach { Log.w(TAG, "計畫解析警告：$it") }
-        overlay?.setStatus("計畫 ${BattlePlanParser.describe(parsed.plan)}")
+        overlay?.setStatus("腳本「${script.displayName}」 ${BattlePlanParser.describe(parsed.plan)}")
         runner.start { api -> BattleScript(api, templates, parsed.plan) }
     }
 
