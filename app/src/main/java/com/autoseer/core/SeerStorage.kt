@@ -5,8 +5,8 @@ import java.io.File
 
 /**
  * App-specific external storage locations (no runtime permission needed):
- *   <externalFilesDir>/templates/<id>.png  — user-supplied recognition templates
- *   <externalFilesDir>/captures/*.png      — normalized screen dumps for cropping
+ *   templates/<id>.png  — user-supplied recognition templates
+ *   captures/<name>.png — normalized screen dumps for cropping
  *
  * On a device this is /Android/data/com.autoseer/files/… — reachable via a file
  * manager or `adb pull`.
