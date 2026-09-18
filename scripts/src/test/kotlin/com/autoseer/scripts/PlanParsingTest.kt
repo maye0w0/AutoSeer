@@ -50,6 +50,17 @@ class PlanParsingTest {
     }
 
     @Test
+    fun battleDelaysDefaultToHalfSecond() {
+        val d = BattleDelays()
+        assertEquals(500L, d.afterHeal)
+        assertEquals(500L, d.afterEnter)
+        assertEquals(500L, d.afterSkill)
+        assertEquals(500L, d.afterSwitch)
+        assertEquals(500L, d.afterResultTap)
+        assertEquals(500L, d.afterRetreatTap)
+    }
+
+    @Test
     fun serializeStepsPreservesUntilDefeat() {
         val stages = listOf(
             listOf(

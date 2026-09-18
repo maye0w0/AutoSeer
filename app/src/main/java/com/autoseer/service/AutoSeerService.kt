@@ -16,6 +16,7 @@ import com.autoseer.R
 import android.graphics.Bitmap
 import com.autoseer.capture.ScreenCaptureManager
 import com.autoseer.core.AndroidLogger
+import com.autoseer.core.DelayPrefs
 import com.autoseer.core.DeviceTemplates
 import com.autoseer.core.OpenCvMatcher
 import com.autoseer.core.SeerStorage
@@ -138,8 +139,9 @@ class AutoSeerService : Service() {
             maxRetriesPerStage = script.maxRetries,
         )
         parsed.warnings.forEach { Log.w(TAG, "計畫解析警告：$it") }
+        val delays = DelayPrefs.toBattleDelays(this)
         overlay?.setStatus("腳本「${script.displayName}」 ${BattlePlanParser.describe(parsed.plan)}")
-        runner.start { api -> BattleScript(api, templates, parsed.plan) }
+        runner.start { api -> BattleScript(api, templates, parsed.plan, delays) }
     }
 
     /** Save the current normalized color frame to <externalFilesDir>/captures for cropping into templates. */

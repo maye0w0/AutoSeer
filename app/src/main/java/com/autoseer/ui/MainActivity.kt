@@ -66,6 +66,9 @@ class MainActivity : AppCompatActivity() {
         binding.btnScripts.setOnClickListener {
             startActivity(Intent(this, ScriptListActivity::class.java))
         }
+        binding.btnDelays.setOnClickListener {
+            startActivity(Intent(this, DelaySettingsActivity::class.java))
+        }
         binding.btnSave.setOnClickListener { saveSettings() }
         binding.btnEditor.setOnClickListener {
             editorLauncher.launch(

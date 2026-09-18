@@ -89,4 +89,16 @@
     <string name="import_fail">剪貼簿內容不是有效的腳本 JSON</string>
     <string name="import_empty">剪貼簿是空的</string>
     <string name="no_scripts">尚無腳本，點上方「＋ 新增腳本」建立</string>
+
+    <!-- 延遲設定（全域） -->
+    <string name="home_delays">延遲設定（全域）</string>
+    <string name="delay_title">延遲設定</string>
+    <string name="delay_desc">全域共用，套用在每個關鍵動作之後（ms）。點太快容易沒真正按到或誤開選單；數值越大越穩、越小越快。0＝不額外等待。</string>
+    <string name="delay_heal">精靈恢復後</string>
+    <string name="delay_enter">進入戰鬥後</string>
+    <string name="delay_skill">施放技能後</string>
+    <string name="delay_switch">換精靈後</string>
+    <string name="delay_result">結算點擊後（勝利／失敗）</string>
+    <string name="delay_retreat">撤退各步之間</string>
+    <string name="delay_reset">還原預設(500)</string>
 </resources>

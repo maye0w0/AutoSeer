@@ -23,6 +23,7 @@ class BattleScript(
     api: AutomataApi,
     private val templates: Templates,
     private val plan: BattlePlan = BattlePlan.default(),
+    private val delays: BattleDelays = BattleDelays.default(),
 ) : Script(api) {
 
     override val name = "自動戰鬥/刷取 (BattleScript)"
@@ -146,7 +147,7 @@ class BattleScript(
         var tries = 0
         while (exists(SeerTemplates.RESULT_WIN) && tries < 10) {
             api.click(SeerLayout.VICTORY_CONTINUE)
-            api.sleep(700)
+            api.sleep(delays.afterResultTap)
             api.refreshScreen()
             tries++
         }
@@ -161,6 +162,7 @@ class BattleScript(
         api.logger.i("第 ${stageIndex + 1} 關 步驟 ${stepIndex + 1}：${SeerLayout.labelFor(code)}")
         val where = SeerLayout.pointFor(code) ?: SeerLayout.SKILL_SLOTS[0]
         api.click(where)
+        api.sleep(delays.afterSkill)
     }
 
     /** Switch to pet [n]. If [alreadyOpen], the 換精靈 screen is showing (pet died). */
@@ -171,7 +173,7 @@ class BattleScript(
         api.click(slot)
         api.sleep(300)
         api.swipe(slot, Location(slot.x, slot.y - SeerLayout.PET_DEPLOY_UP_PX), 450)
-        api.sleep(900)
+        api.sleep(delays.afterSwitch)
     }
 
     /** Deploy some alive pet (used to unstick / to enable 撤退 when a pet is dead). */
@@ -214,7 +216,10 @@ class BattleScript(
             val enter = api.find(templates.get(SeerTemplates.ENTER_BATTLE)) ?: return attempt > 0
             api.logger.i("進入戰鬥（第 ${attempt + 1} 次）")
             api.click(enter.region.center, durationMs = 120)  // longer tap: H5 button catches it more reliably
-            if (api.waitUntil(3500, pollMs = 400) { !exists(SeerTemplates.ENTER_BATTLE) }) return true
+            if (api.waitUntil(3500, pollMs = 400) { !exists(SeerTemplates.ENTER_BATTLE) }) {
+                api.sleep(delays.afterEnter)   // let the battle intro settle before acting
+                return true
+            }
             api.refreshScreen()
         }
         return false
@@ -226,25 +231,21 @@ class BattleScript(
         // A dead pet on field greys out 撤退 — deploy someone first.
         deployAnyPet()
 
-        api.click(SeerLayout.RETREAT.center)          // 撤退
-        api.sleep(1000)
-
-        // The confirm dialogs (你確定要撤退嗎 / 恭喜你成功撤退) and the 失敗UI appear
-        // with variable delays, so tap every candidate confirm/dismiss point each
-        // cycle until 「進入戰鬥」 shows (back at the stage prep) or we time out.
-        var t = 0
+        // Precise single taps paced by [BattleDelays.afterRetreatTap] (per #9), one
+        // per dialog, instead of a rapid multi-tap loop. If 「進入戰鬥」 hasn't shown
+        // (variable dialog timing), repeat the whole sequence a few times as a
+        // robust fallback — re-tapping a coordinate on an already-open dialog is a
+        // harmless no-op.
+        var attempt = 0
         api.refreshScreen()
-        while (!exists(SeerTemplates.ENTER_BATTLE) && t < 18) {
-            api.click(SeerLayout.RETREAT_CONFIRM)         // 你確定要撤退嗎 → 確認
-            api.sleep(350)
-            api.click(SeerLayout.RETREAT_SUCCESS_CONFIRM) // 恭喜你成功撤退 → 確認
-            api.sleep(350)
-            api.click(SeerLayout.VICTORY_CONTINUE)        // 失敗UI：點空白略過
-            api.sleep(350)
-            api.click(SeerLayout.CONTINUE_CHALLENGE)      // 繼續挑戰 → 前置準備
-            api.sleep(700)
+        while (!exists(SeerTemplates.ENTER_BATTLE) && attempt < RETREAT_ATTEMPTS) {
+            retreatTap(SeerLayout.RETREAT.center)          // 撤退
+            retreatTap(SeerLayout.RETREAT_CONFIRM)         // 你確定要撤退嗎 → 確認
+            retreatTap(SeerLayout.RETREAT_SUCCESS_CONFIRM) // 恭喜你成功撤退 → 確認
+            retreatTap(SeerLayout.VICTORY_CONTINUE)        // 失敗UI：點空白略過
+            retreatTap(SeerLayout.CONTINUE_CHALLENGE)      // 繼續挑戰 → 前置準備
             api.refreshScreen()
-            t++
+            attempt++
         }
 
         healIfEnabled()
@@ -254,9 +255,18 @@ class BattleScript(
         api.waitUntil(ENTER_TIMEOUT_MS, pollMs = 500) { !exists(SeerTemplates.ENTER_BATTLE) }
     }
 
+    /** One precise tap in the retreat flow, then wait the configured pacing delay. */
+    private fun retreatTap(where: Location) {
+        api.click(where)
+        api.sleep(delays.afterRetreatTap)
+    }
+
     private fun healIfEnabled() {
         if (plan.healBeforeBattle) {
-            api.logger.i("精靈恢復"); api.click(SeerLayout.HEAL); api.sleep(900); api.refreshScreen()
+            api.logger.i("精靈恢復")
+            api.click(SeerLayout.HEAL)
+            api.sleep(delays.afterHeal)
+            api.refreshScreen()
         }
     }
 
@@ -276,5 +286,7 @@ class BattleScript(
         private const val NEXT_STAGE_TIMEOUT_MS = 20_000L
         private const val TURN_SETTLE_MS = 12_000L
         private const val ENTER_TIMEOUT_MS = 12_000L
+        // Robust fallback: repeat the paced single-tap retreat sequence at most this many times.
+        private const val RETREAT_ATTEMPTS = 6
     }
 }
