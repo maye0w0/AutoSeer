@@ -50,6 +50,35 @@ class PlanParsingTest {
     }
 
     @Test
+    fun loopWrapsWithinFixedStageCount() {
+        // 精靈因子：5 關、跑 3 輪。清完第5關要回第1關，而非跑到不存在的「關6」。
+        val p = BattlePlanParser.parse("1;1;1;1;1", loops = 3).plan
+        assertEquals(5, p.stagesPerLoop)
+        assertEquals(0, p.stageIndexFor(0))
+        assertEquals(4, p.stageIndexFor(4))
+        assertEquals(0, p.stageIndexFor(5))   // 清完第5關 → 回關1
+        assertEquals(4, p.stageIndexFor(9))
+        assertEquals(15, p.clearsTarget())    // 5*3
+    }
+
+    @Test
+    fun loopStartStageMidLoopConsumesOneAttempt() {
+        val p = BattlePlanParser.parse("1;1;1;1;1", loops = 3, startStage = 3).plan
+        assertEquals(2, p.stageIndexFor(0))   // 關3
+        assertEquals(4, p.stageIndexFor(2))   // 關5
+        assertEquals(0, p.stageIndexFor(3))   // wrap → 關1
+        assertEquals(13, p.clearsTarget())    // 5*3 - 2
+    }
+
+    @Test
+    fun emptyPlanHasNoLoopLimitNorWrap() {
+        val p = BattlePlanParser.parse("", loops = 3).plan
+        assertEquals(0, p.stagesPerLoop)
+        assertEquals(7, p.stageIndexFor(7))   // 無關卡計畫 → 不環繞
+        assertEquals(0, p.clearsTarget())     // 只受 maxBattles 限制
+    }
+
+    @Test
     fun battleDelaysDefaultToHalfSecond() {
         val d = BattleDelays()
         assertEquals(500L, d.afterHeal)

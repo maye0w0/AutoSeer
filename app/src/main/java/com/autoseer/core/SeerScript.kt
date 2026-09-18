@@ -22,6 +22,8 @@ data class SeerScript(
     val defaultSlot: Int = 2,
     val startStage: Int = 1,
     val maxRetries: Int = 5,
+    /** Full loops of the stage list to run (精靈因子=3). 1 = single pass. */
+    val loops: Int = 1,
     /** Optional display names for skill slots 1..5; blank falls back to the number. */
     val skillNames: List<String> = List(SeerLayout.SKILL_COUNT) { "" },
 ) {

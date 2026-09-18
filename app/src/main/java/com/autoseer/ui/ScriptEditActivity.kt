@@ -98,6 +98,7 @@ class ScriptEditActivity : AppCompatActivity() {
         binding.editStartStage.setText(script.startStage.toString())
         binding.editMaxRetries.setText(script.maxRetries.toString())
         binding.editDefaultSlot.setText(script.defaultSlot.toString())
+        binding.editLoops.setText(script.loops.toString())
         binding.healSwitch.isChecked = script.healBeforeBattle
         binding.advanceSwitch.isChecked = script.advanceMap
         refreshSummary()
@@ -139,6 +140,7 @@ class ScriptEditActivity : AppCompatActivity() {
             defaultSlot = (binding.editDefaultSlot.text.toString().toIntOrNull() ?: 2).coerceIn(1, SeerLayout.SKILL_COUNT),
             startStage = (binding.editStartStage.text.toString().toIntOrNull() ?: 1).coerceAtLeast(1),
             maxRetries = (binding.editMaxRetries.text.toString().toIntOrNull() ?: 5).coerceAtLeast(0),
+            loops = (binding.editLoops.text.toString().toIntOrNull() ?: 1).coerceAtLeast(1),
             skillNames = currentSkillNames(),
         )
         ScriptStore.upsert(this, updated)

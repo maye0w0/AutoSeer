@@ -33,14 +33,15 @@ class BattleScript(
 
     private var stepIndex = 0
     private var retries = 0
-    // Plan index for the stage we're on: offset by the (1-based) start stage.
-    private val stageIndex: Int get() = (plan.startStage - 1) + battlesDone
+    // Plan index for the stage we're on: offset by the start stage and wrapped
+    // within the loop, so a fixed-count map cycles instead of running off the end.
+    private val stageIndex: Int get() = plan.stageIndexFor(battlesDone)
 
     override fun run() {
-        api.logger.i("BattleScript 開始：maxBattles=${plan.maxBattles}, 戰前恢復=${plan.healBeforeBattle}, 推進地圖=${plan.advanceMap}, 重試上限=${plan.maxRetriesPerStage}")
+        api.logger.i("BattleScript 開始：maxBattles=${plan.maxBattles}, 循環=${plan.loops}, 每輪關數=${plan.stagesPerLoop}, 戰前恢復=${plan.healBeforeBattle}, 推進地圖=${plan.advanceMap}, 重試上限=${plan.maxRetriesPerStage}")
         var unknown = 0
         while (true) {
-            if (reachedLimit()) { api.logger.i("已達場數上限 ${plan.maxBattles}，停止。"); break }
+            if (reachedLimit()) { api.logger.i("已達停止條件（已清 $battlesDone 關），停止。"); break }
             api.refreshScreen()
 
             when {
@@ -270,7 +271,11 @@ class BattleScript(
         }
     }
 
-    private fun reachedLimit(): Boolean = plan.maxBattles > 0 && battlesDone >= plan.maxBattles
+    private fun reachedLimit(): Boolean {
+        if (plan.maxBattles > 0 && battlesDone >= plan.maxBattles) return true
+        val target = plan.clearsTarget()
+        return target > 0 && battlesDone >= target
+    }
 
     /** True once the per-stage retreat retries run out. 0 = unlimited (never exhausts). */
     private fun retriesExhausted(): Boolean =

@@ -140,6 +140,7 @@ object ScriptStore {
         put("defaultSlot", s.defaultSlot)
         put("startStage", s.startStage)
         put("maxRetries", s.maxRetries)
+        put("loops", s.loops)
         put("skillNames", JSONArray(s.skillNames))
     }
 
@@ -160,6 +161,7 @@ object ScriptStore {
             defaultSlot = o.optInt("defaultSlot", d.defaultSlot),
             startStage = o.optInt("startStage", d.startStage),
             maxRetries = o.optInt("maxRetries", d.maxRetries),
+            loops = o.optInt("loops", d.loops),
             skillNames = skillNames,
         )
     }

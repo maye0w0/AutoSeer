@@ -81,6 +81,11 @@ class AutoSeerService : Service() {
     }
 
     private fun setup(resultCode: Int, data: Intent) {
+        // Re-authorizing while already running must not stack overlays/captures:
+        // release any previous runtime first (BUG-1), then build fresh from the
+        // new projection. This does not stop the service (no stopForeground/Self).
+        releaseRuntime()
+
         val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         val projection: MediaProjection = mpm.getMediaProjection(resultCode, data)
 
@@ -137,6 +142,7 @@ class AutoSeerService : Service() {
             defaultSlot = script.defaultSlot,
             startStage = script.startStage,
             maxRetriesPerStage = script.maxRetries,
+            loops = script.loops,
         )
         parsed.warnings.forEach { Log.w(TAG, "計畫解析警告：$it") }
         val delays = DelayPrefs.toBattleDelays(this)
@@ -201,13 +207,18 @@ class AutoSeerService : Service() {
         }
     }
 
-    private fun stopEverything() {
+    /** Tear down the capture/overlay/runner without stopping the service itself. */
+    private fun releaseRuntime() {
         runner?.stop()
         overlay?.hide()
         capture?.release()
         runner = null
         overlay = null
         capture = null
+    }
+
+    private fun stopEverything() {
+        releaseRuntime()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } else {
