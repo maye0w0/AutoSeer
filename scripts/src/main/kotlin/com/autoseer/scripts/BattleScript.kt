@@ -66,6 +66,13 @@ class BattleScript(
 
                 else -> {
                     if (++unknown >= STUCK_LIMIT) { api.logger.w("連續 $STUCK_LIMIT 次無法辨識畫面，停止。"); break }
+                    // Live diagnostic while waiting (e.g. long post-enter lag before
+                    // 你的回合 appears): show how close 「你的回合」 is to matching, so a
+                    // template that never reaches the threshold is obvious on the overlay.
+                    if (unknown % 5 == 0 && templates.has(SeerTemplates.BATTLE_ACTION)) {
+                        val s = api.find(templates.get(SeerTemplates.BATTLE_ACTION), threshold = 0.0)?.score ?: -1.0
+                        api.logger.i("等待可辨識畫面…（你的回合樣板分數 ${fmt(s)}／門檻 ${AutomataApi.DEFAULT_THRESHOLD}）")
+                    }
                     api.sleep(700)
                 }
             }
@@ -282,6 +289,9 @@ class BattleScript(
         plan.maxRetriesPerStage > 0 && retries >= plan.maxRetriesPerStage
 
     private fun exists(id: String): Boolean = templates.has(id) && api.exists(templates.get(id))
+
+    /** Round a match score to 3 dp for logs (locale-independent). */
+    private fun fmt(v: Double): String = ((v * 1000).toInt() / 1000.0).toString()
 
     companion object {
         // Be patient: bosses with 先制+N make the enemy act several turns before our
