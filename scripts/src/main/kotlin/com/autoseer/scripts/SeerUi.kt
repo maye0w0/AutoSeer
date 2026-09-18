@@ -15,6 +15,11 @@ object SeerTemplates {
     const val WAIT_CHALLENGE = "stage/wait_challenge" // 可挑戰節點的「等待挑戰」標籤
     const val PET_DEFEATED = "state/pet_defeated"     // 換精靈介面某卡的「已戰敗」＝上場精靈陣亡
     const val OUT_OF_STAMINA = "state/out_of_stamina" // 「挑戰次數不足」彈窗（尚無樣板）
+
+    /** All template ids the automation looks for (used by the detection probe). */
+    val ALL = listOf(
+        BATTLE_ACTION, RESULT_WIN, ENTER_BATTLE, WAIT_CHALLENGE, PET_DEFEATED, OUT_OF_STAMINA,
+    )
 }
 
 /**

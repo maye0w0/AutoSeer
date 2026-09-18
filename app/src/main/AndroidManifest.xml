@@ -27,6 +27,18 @@
             android:name=".ui.EditorActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.ScriptListActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.ScriptEditActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.DelaySettingsActivity"
+            android:exported="false" />
+
         <service
             android:name=".service.AutoSeerService"
             android:exported="false"
