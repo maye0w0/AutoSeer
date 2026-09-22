@@ -12,6 +12,8 @@ jobs:
   build:
     name: Unit tests + Debug APK
     runs-on: ubuntu-latest
+    permissions:
+      contents: write   # 發佈 Release 需要寫入權限
 
     steps:
       - name: Checkout
@@ -59,3 +61,27 @@ jobs:
           name: test-reports
           path: "**/build/reports/tests/**"
           if-no-files-found: ignore
+
+      # 只在 push（非 PR）時發佈到 Releases，標記為 latest。
+      # 固定下載連結：
+      #   https://github.com/maye0w0/AutoSeer/releases/latest/download/app-debug.apk
+      - name: Publish debug APK to Releases
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: debug-${{ github.run_number }}
+          name: "測試版 APK #${{ github.run_number }}（${{ github.ref_name }}）"
+          body: |
+            自動建置的 debug APK。
+
+            - 分支：`${{ github.ref_name }}`
+            - Commit：`${{ github.sha }}`
+            - 檔案：`app-debug.apk`（debug 簽章）
+
+            固定下載連結（永遠指向最新版）：
+            https://github.com/maye0w0/AutoSeer/releases/latest/download/app-debug.apk
+          files: app/build/outputs/apk/debug/app-debug.apk
+          make_latest: true
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
