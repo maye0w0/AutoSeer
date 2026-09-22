@@ -16,9 +16,22 @@ object SeerTemplates {
     const val PET_DEFEATED = "state/pet_defeated"     // 換精靈介面某卡的「已戰敗」＝上場精靈陣亡
     const val OUT_OF_STAMINA = "state/out_of_stamina" // 「挑戰次數不足」彈窗（尚無樣板）
 
+    // 精靈因子掃蕩流程（樣板自標註 PPT 裁出，1280x720 正規尺度）
+    const val OPEN_CHALLENGE = "stage/open_challenge"     // 「開啟挑戰」按鈕
+    const val PET_RECOVER = "seer/pet_recover"           // 「精靈恢復」鈕
+    const val FIRST_RECOVER_TIP = "seer/first_recover_tip" // 每日首次恢復提示訊息
+    const val RECOVER_FULL = "seer/recover_full"         // 「恭喜…已全部恢復」字樣
+    const val RECOVER_CANNOT = "seer/recover_cannot"     // 「已滿，無法重新恢復」字樣
+    const val DAILY_LIMIT = "state/daily_limit"          // 「達到每天操作上限」字樣
+    const val QUICK_MENU = "lobby/quick_menu"            // 快速功能選單鈕（左上）
+    const val HOME_BTN = "lobby/home"                    // 小房子（回大廳）
+    const val NAV_GUIDE = "lobby/nav_guide"              // 航行指南鈕（已回大廳）
+
     /** All template ids the automation looks for (used by the detection probe). */
     val ALL = listOf(
         BATTLE_ACTION, RESULT_WIN, ENTER_BATTLE, WAIT_CHALLENGE, PET_DEFEATED, OUT_OF_STAMINA,
+        OPEN_CHALLENGE, PET_RECOVER, FIRST_RECOVER_TIP, RECOVER_FULL, RECOVER_CANNOT,
+        DAILY_LIMIT, QUICK_MENU, HOME_BTN, NAV_GUIDE,
     )
 }
 

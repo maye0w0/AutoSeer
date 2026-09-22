@@ -1,11 +1,10 @@
 package com.autoseer.capture
 
 import android.graphics.Bitmap
-import android.graphics.Canvas
 import android.graphics.PixelFormat
-import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.os.Handler
@@ -23,13 +22,13 @@ import org.opencv.imgproc.Imgproc
  * Captures the screen via MediaProjection and hands back normalized grayscale
  * screenshots (scaled so height == [NORMALIZED_HEIGHT]) as [OpenCvPattern]s.
  *
- * Frames are drained continuously on a background thread via an
- * [ImageReader.OnImageAvailableListener] into a single [latestFrame]: the script
- * loop only polls a few times per second, far slower than the VirtualDisplay
- * produces frames, so a pull-only model let the ImageReader's buffers fill and
- * the producer stall — after which reads returned a STALE frame (你的回合 already
- * on screen but never in the analyzed image). Continuous draining keeps the
- * producer flowing and always serves the newest frame.
+ * OBS-1 fix: the script polls only a few times/sec while the VirtualDisplay
+ * produces frames far faster, so the ImageReader's buffers fill and the producer
+ * stalls — after which `acquireLatestImage()` keeps returning a STALE frame
+ * (你的回合 already on screen but never in the analyzed image). Manually pressing
+ * 存畫面 "unstuck" it by doing one extra acquire that freed a buffer. So every
+ * grab now does that itself: **discard one (stale) frame to relieve back-pressure,
+ * then wait for a genuinely fresh frame.**
  */
 class ScreenCaptureManager(
     private val projection: MediaProjection,
@@ -50,18 +49,10 @@ class ScreenCaptureManager(
 
     private var virtualDisplay: VirtualDisplay? = null
 
-    // Written by the capture thread's listener, read (copied) by the script thread.
-    private val frameLock = Any()
-    private var published: Bitmap? = null   // device-size, always the newest frame
-    private var pendingBuffer: Bitmap? = null // scratch for copyPixelsFromBuffer (row-padded)
-
     fun start() {
         projection.registerCallback(object : MediaProjection.Callback() {
-            override fun onStop() {
-                Log.i(TAG, "MediaProjection 已停止")
-            }
+            override fun onStop() { Log.i(TAG, "MediaProjection 已停止") }
         }, handler)
-        imageReader.setOnImageAvailableListener({ reader -> onFrame(reader) }, handler)
         virtualDisplay = projection.createVirtualDisplay(
             "AutoSeerCapture",
             deviceWidth,
@@ -77,52 +68,48 @@ class ScreenCaptureManager(
     override fun normalizedSize(): Size = Size(normalizedWidth, normalizedHeight)
     override fun deviceSize(): Size = Size(deviceWidth, deviceHeight)
 
-    /** Drain to the newest available frame and publish it, freeing buffers so the producer keeps flowing. */
-    private fun onFrame(reader: ImageReader) {
-        val image = try { reader.acquireLatestImage() } catch (e: Exception) { null } ?: return
-        try {
-            val plane = image.planes[0]
-            val pixelStride = plane.pixelStride
-            val rowStride = plane.rowStride
-            val rowPadding = rowStride - pixelStride * deviceWidth
-            val bufferedWidth = deviceWidth + rowPadding / pixelStride
-
-            val buffer = pendingBuffer?.takeIf { it.width == bufferedWidth && it.height == deviceHeight }
-                ?: Bitmap.createBitmap(bufferedWidth, deviceHeight, Bitmap.Config.ARGB_8888)
-                    .also { pendingBuffer = it }
-            buffer.copyPixelsFromBuffer(plane.buffer)
-
-            synchronized(frameLock) {
-                val dst = published?.takeIf { it.width == deviceWidth && it.height == deviceHeight }
-                    ?: Bitmap.createBitmap(deviceWidth, deviceHeight, Bitmap.Config.ARGB_8888)
-                        .also { published = it }
-                // Copy the (un-padded) device-width region into the published frame in place.
-                Canvas(dst).drawBitmap(
-                    buffer,
-                    Rect(0, 0, deviceWidth, deviceHeight),
-                    Rect(0, 0, deviceWidth, deviceHeight),
-                    null,
-                )
+    /**
+     * Grab a fresh device-size frame. Discards one possibly-stale buffered frame
+     * first (relieving producer back-pressure — the "存畫面" effect), then waits
+     * for the next frame the producer pushes.
+     */
+    private fun grabDeviceBitmap(): Bitmap {
+        imageReader.acquireLatestImage()?.close()   // drop stale, free a buffer
+        var attempts = 0
+        while (true) {
+            Thread.sleep(FRAME_WAIT_MS)
+            val image = imageReader.acquireLatestImage()
+            if (image != null) {
+                try {
+                    return imageToBitmap(image)
+                } finally {
+                    image.close()
+                }
             }
-        } finally {
-            image.close()
+            if (++attempts > MAX_WAIT_TICKS) error("擷取螢幕逾時：沒有可用的畫面影格")
         }
     }
 
-    /** A stable snapshot of the newest frame (device size). Caller owns it. */
-    private fun awaitFrame(timeoutMs: Long = FRAME_TIMEOUT_MS): Bitmap {
-        val deadline = System.currentTimeMillis() + timeoutMs
-        while (true) {
-            synchronized(frameLock) {
-                published?.let { return it.copy(Bitmap.Config.ARGB_8888, false) }
-            }
-            if (System.currentTimeMillis() > deadline) error("擷取螢幕逾時：沒有可用的畫面影格")
-            Thread.sleep(20)
+    /** Copy an ImageReader frame into a device-size ARGB bitmap (cropping row padding). */
+    private fun imageToBitmap(image: Image): Bitmap {
+        val plane = image.planes[0]
+        val pixelStride = plane.pixelStride
+        val rowStride = plane.rowStride
+        val rowPadding = rowStride - pixelStride * deviceWidth
+        val bufferedWidth = deviceWidth + rowPadding / pixelStride
+        val buf = Bitmap.createBitmap(bufferedWidth, deviceHeight, Bitmap.Config.ARGB_8888)
+        buf.copyPixelsFromBuffer(plane.buffer)
+        return if (bufferedWidth != deviceWidth) {
+            val cropped = Bitmap.createBitmap(buf, 0, 0, deviceWidth, deviceHeight)
+            buf.recycle()
+            cropped
+        } else {
+            buf
         }
     }
 
     override fun takeScreenshot(): IPattern {
-        val bitmap = awaitFrame()
+        val bitmap = grabDeviceBitmap()
         val rgba = Mat()
         Utils.bitmapToMat(bitmap, rgba)
         bitmap.recycle()
@@ -144,7 +131,7 @@ class ScreenCaptureManager(
      * sees), for template capture / debugging. Caller owns the returned bitmap.
      */
     fun captureColorBitmap(): Bitmap {
-        val src = awaitFrame()
+        val src = grabDeviceBitmap()
         val scaled = Bitmap.createScaledBitmap(src, normalizedWidth, normalizedHeight, true)
         if (scaled !== src) src.recycle()
         return scaled
@@ -153,14 +140,7 @@ class ScreenCaptureManager(
     fun release() {
         virtualDisplay?.release()
         virtualDisplay = null
-        imageReader.setOnImageAvailableListener(null, null)
         imageReader.close()
-        synchronized(frameLock) {
-            published?.recycle()
-            published = null
-        }
-        pendingBuffer?.recycle()
-        pendingBuffer = null
         runCatching { projection.stop() }
         handlerThread.quitSafely()
     }
@@ -168,8 +148,9 @@ class ScreenCaptureManager(
     companion object {
         private const val TAG = "AutoSeer"
         const val NORMALIZED_HEIGHT = 720
-        // A little headroom so the producer never blocks between our polls.
         private const val MAX_IMAGES = 3
-        private const val FRAME_TIMEOUT_MS = 2000L
+        // Wait ~1+ frame between the discard and the fresh acquire.
+        private const val FRAME_WAIT_MS = 45L
+        private const val MAX_WAIT_TICKS = 45   // ~2s timeout
     }
 }
