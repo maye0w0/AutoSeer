@@ -24,6 +24,26 @@
         </activity>
 
         <activity
+            android:name=".ui.MissionListActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.DailyTasksActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.SettingsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.DebugActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.MoreActivity"
+            android:exported="false" />
+
+        <activity
             android:name=".ui.EditorActivity"
             android:exported="false" />
 

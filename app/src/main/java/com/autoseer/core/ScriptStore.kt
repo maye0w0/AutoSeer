@@ -29,6 +29,10 @@ object ScriptStore {
 
     fun get(ctx: Context, id: String): SeerScript? = list(ctx).firstOrNull { it.id == id }
 
+    /** Scripts in one mission category (e.g. seer_factor). */
+    fun list(ctx: Context, category: String): List<SeerScript> =
+        list(ctx).filter { it.category == category }
+
     fun selectedId(ctx: Context): String? = prefs(ctx).getString(KEY_SELECTED, null)
 
     /** The active script: the selected one, else the first, else null when empty. */

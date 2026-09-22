@@ -62,6 +62,33 @@
     <string name="preset_title">載入關卡預設（會覆蓋上方計畫）：</string>
     <string name="preset_loaded">已載入預設</string>
 
+    <!-- FGA 式主頁入口 -->
+    <string name="home_missions">周回腳本</string>
+    <string name="home_settings">更多設定</string>
+    <string name="home_more">更多選項</string>
+    <string name="home_debug">Debug</string>
+
+    <!-- 周回腳本（任務分類） -->
+    <string name="missions_title">周回腳本</string>
+    <string name="missions_desc">選擇要自動執行的關卡類型。</string>
+    <string name="mission_seer_factor">精靈因子</string>
+    <string name="mission_daily">每日任務</string>
+    <string name="daily_title">每日任務</string>
+    <string name="daily_placeholder">每日任務自動化尚未開放，敬請期待。</string>
+
+    <!-- 更多設定 -->
+    <string name="settings_title">更多設定</string>
+    <string name="settings_run_title">執行選項（全域）</string>
+    <string name="settings_delay_entry">全域延遲設定</string>
+
+    <!-- Debug -->
+    <string name="debug_title">Debug</string>
+    <string name="debug_desc">啟動服務後，畫面上的懸浮控制列提供除錯工具：\n\n・存畫面：把目前正規化後的彩色畫面存到外部檔案，供裁切成樣板使用。\n・測試偵測：對每張樣板回報比對分數（不點擊任何位置），用來確認辨識是否正常。\n\n這些動作實際由懸浮列的按鈕觸發，本頁僅作說明。</string>
+
+    <!-- 更多選項 -->
+    <string name="more_title">更多選項</string>
+    <string name="more_placeholder">語言、匯入匯出、關於等選項將於後續版本加入。</string>
+
     <!-- 多腳本管理 -->
     <string name="home_scripts">周回腳本（多腳本管理）</string>
     <string name="home_current">目前腳本：%1$s</string>

@@ -17,6 +17,7 @@ import android.graphics.Bitmap
 import com.autoseer.capture.ScreenCaptureManager
 import com.autoseer.core.AndroidLogger
 import com.autoseer.core.DelayPrefs
+import com.autoseer.core.RunPrefs
 import com.autoseer.core.DeviceTemplates
 import com.autoseer.core.OpenCvMatcher
 import com.autoseer.core.SeerStorage
@@ -139,12 +140,12 @@ class AutoSeerService : Service() {
         val parsed = BattlePlanParser.parse(
             text = script.planText,
             maxBattles = script.maxBattles,
-            healBeforeBattle = script.healBeforeBattle,
+            healBeforeBattle = RunPrefs.healBeforeBattle(this),
             advanceMap = script.advanceMap,
-            defaultSlot = script.defaultSlot,
+            defaultSlot = RunPrefs.defaultSlot(this),
             startStage = script.startStage,
             maxRetriesPerStage = script.maxRetries,
-            loops = script.loops,
+            loops = RunPrefs.loops(this),
         )
         parsed.warnings.forEach { Log.w(TAG, "計畫解析警告：$it") }
         val delays = DelayPrefs.toBattleDelays(this)
