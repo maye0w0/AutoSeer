@@ -24,6 +24,8 @@ data class SeerScript(
     val maxRetries: Int = 5,
     /** Full loops of the stage list to run (精靈因子=3). 1 = single pass. */
     val loops: Int = 1,
+    /** Mission category this script belongs to (selects the run engine). */
+    val category: String = CATEGORY_SEER_FACTOR,
     /** Optional display names for skill slots 1..5; blank falls back to the number. */
     val skillNames: List<String> = List(SeerLayout.SKILL_COUNT) { "" },
 ) {
@@ -38,6 +40,10 @@ data class SeerScript(
     }
 
     companion object {
-        fun new(name: String = "") = SeerScript(name = name)
+        const val CATEGORY_SEER_FACTOR = "seer_factor"
+        const val CATEGORY_DAILY = "daily"
+
+        fun new(name: String = "", category: String = CATEGORY_SEER_FACTOR) =
+            SeerScript(name = name, category = category)
     }
 }

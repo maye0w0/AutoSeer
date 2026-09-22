@@ -141,6 +141,7 @@ object ScriptStore {
         put("startStage", s.startStage)
         put("maxRetries", s.maxRetries)
         put("loops", s.loops)
+        put("category", s.category)
         put("skillNames", JSONArray(s.skillNames))
     }
 
@@ -162,6 +163,7 @@ object ScriptStore {
             startStage = o.optInt("startStage", d.startStage),
             maxRetries = o.optInt("maxRetries", d.maxRetries),
             loops = o.optInt("loops", d.loops),
+            category = o.optString("category", d.category),
             skillNames = skillNames,
         )
     }

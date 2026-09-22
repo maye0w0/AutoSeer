@@ -25,10 +25,12 @@ import com.autoseer.libautomata.IGestureService
 import com.autoseer.libautomata.Location
 import com.autoseer.overlay.ControlOverlay
 import com.autoseer.core.ScriptStore
+import com.autoseer.core.SeerScript
 import com.autoseer.runner.ScriptRunner
 import com.autoseer.scripts.BattleScript
 import com.autoseer.scripts.BattlePlanParser
 import com.autoseer.scripts.ProbeScript
+import com.autoseer.scripts.SeerFactorScript
 import java.io.File
 import java.io.FileOutputStream
 
@@ -147,7 +149,13 @@ class AutoSeerService : Service() {
         parsed.warnings.forEach { Log.w(TAG, "計畫解析警告：$it") }
         val delays = DelayPrefs.toBattleDelays(this)
         overlay?.setStatus("腳本「${script.displayName}」 ${BattlePlanParser.describe(parsed.plan)}")
-        runner.start { api -> BattleScript(api, templates, parsed.plan, delays) }
+        runner.start { api ->
+            if (script.category == SeerScript.CATEGORY_SEER_FACTOR) {
+                SeerFactorScript(api, templates, parsed.plan, delays)
+            } else {
+                BattleScript(api, templates, parsed.plan, delays)
+            }
+        }
     }
 
     /** Save the current normalized color frame to <externalFilesDir>/captures for cropping into templates. */
