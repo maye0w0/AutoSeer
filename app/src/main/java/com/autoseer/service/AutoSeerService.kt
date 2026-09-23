@@ -155,6 +155,7 @@ class AutoSeerService : Service() {
                 SeerFactorScript(
                     api, templates, parsed.plan, delays,
                     backToLobbyOnExhaust = RunPrefs.backToLobbyOnRetryExhausted(this),
+                    onProgress = { stageNo, cleared -> overlay?.setProgress(stageNo, cleared) },
                 )
             } else {
                 BattleScript(api, templates, parsed.plan, delays)

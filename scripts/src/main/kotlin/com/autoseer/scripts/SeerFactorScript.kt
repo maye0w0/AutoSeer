@@ -26,6 +26,8 @@ class SeerFactorScript(
     private val delays: BattleDelays = BattleDelays.default(),
     /** 失敗達每關重試上限後：true=回大廳再停；false(預設)=原地停。 */
     private val backToLobbyOnExhaust: Boolean = false,
+    /** 進度回報（stageNo 從 1 起、cleared=已清關數），供懸浮視窗顯示。 */
+    private val onProgress: (stageNo: Int, cleared: Int) -> Unit = { _, _ -> },
 ) : Script(api) {
 
     override val name = "精靈因子掃蕩 (SeerFactorScript)"
@@ -41,6 +43,7 @@ class SeerFactorScript(
 
     override fun run() {
         api.logger.i("精靈因子掃蕩開始：每輪關數=${plan.stagesPerLoop}, 起始關=${plan.startStage}")
+        emitProgress()
         var unknown = 0
         var iterations = 0
         while (!stop) {
@@ -117,6 +120,7 @@ class SeerFactorScript(
     /** 打當前這一關並依勝/敗分流。 */
     private fun fightThisStage() {
         val stageIdx = progress.currentStageIndex()
+        emitProgress()
         val stage = plan.forStage(stageIdx)
         val label = "（第 ${stageIdx + 1} 關｜已清 ${progress.battlesDone}｜重試 ${progress.retriesThisStage}）"
         when (runner.fight(stage.steps, plan.defaultCode, label)) {
@@ -134,9 +138,13 @@ class SeerFactorScript(
     /** 勝利：累加 → 點繼續 → 下一關（記帳交給 [SweepProgress]）。 */
     private fun onWin() {
         progress.onWin()
+        emitProgress()
         api.logger.i("勝利！已清 ${progress.battlesDone} 關 → 點擊繼續，進入下一關")
         dismissResultScreen()
     }
+
+    /** 回報目前進度給懸浮視窗（stageNo 從 1 起）。 */
+    private fun emitProgress() = onProgress(progress.currentStageIndex() + 1, progress.battlesDone)
 
     /** 失敗/撤退：點繼續 → 依 [SweepProgress] 決定重打同關或停止（原地/回大廳）。 */
     private fun onLose(reason: String) {
