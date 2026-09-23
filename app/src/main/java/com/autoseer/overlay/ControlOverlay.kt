@@ -14,6 +14,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import com.autoseer.core.RunPrefs
 import com.autoseer.core.ScriptStore
@@ -44,9 +45,11 @@ class ControlOverlay(
     private lateinit var dotView: TextView      // the "AS" circle
     private lateinit var statusText: TextView   // status line (panel)
     private lateinit var progressText: TextView // 目前進度 (panel)
-    private lateinit var scriptButton: Button   // opens the script dropdown
-    private lateinit var scriptList: LinearLayout   // self-drawn dropdown list
-    private lateinit var delayPanel: LinearLayout   // in-overlay delay sub-page
+    private lateinit var scriptButton: Button   // opens the script popup
+    private lateinit var scriptList: LinearLayout   // script rows (content of scriptPopup)
+    private lateinit var scriptPopup: LinearLayout  // floating card over the panel
+    private lateinit var delayPanel: LinearLayout   // delay rows (content of delayPopup)
+    private lateinit var delayPopup: LinearLayout    // floating card over the panel
     private lateinit var stageValue: TextView   // 起始關卡 value
     private lateinit var runButton: Button
 
@@ -84,6 +87,17 @@ class ControlOverlay(
         panel.visibility = View.GONE
         container.addView(collapsed)
         container.addView(panel)
+
+        // 獨立浮動子頁：疊在主面板上、可上下滑；顯示時主面板尺寸不變。
+        scriptPopup = makePopupCard("選擇腳本", scriptList)
+        delayPopup = makePopupCard("延遲設定（全域）", delayPanel)
+        val popupLp = {
+            FrameLayout.LayoutParams(dp(250), FrameLayout.LayoutParams.WRAP_CONTENT).apply {
+                gravity = Gravity.TOP or Gravity.START; leftMargin = dp(6); topMargin = dp(70)
+            }
+        }
+        container.addView(scriptPopup, popupLp())
+        container.addView(delayPopup, popupLp())
 
         val type = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -161,11 +175,7 @@ class ControlOverlay(
         scriptButton = makeBtn("腳本：--", cField).apply {
             setOnClickListener { toggleScriptList() }
         }
-        scriptList = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            background = rounded(Color.parseColor("#171A1E"), 9, cLine)
-            visibility = View.GONE
-        }
+        scriptList = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         // 起始關卡 stepper
         val stageRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         val stageLabel = TextView(context).apply { text = "起始關卡"; setTextColor(cSub); textSize = 12f }
@@ -184,12 +194,7 @@ class ControlOverlay(
             textSize = 12f
             setOnClickListener { toggleDelayPanel() }
         }
-        delayPanel = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            background = rounded(Color.parseColor("#171A1E"), 9, cLine)
-            setPadding(dp(8), dp(8), dp(8), dp(8))
-            visibility = View.GONE
-        }
+        delayPanel = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         runButton = makeBtn("開始", cGood).apply {
             textSize = 15f; setTypeface(typeface, Typeface.BOLD)
             setOnClickListener {
@@ -208,9 +213,9 @@ class ControlOverlay(
             p.addView(v, LinearLayout.LayoutParams(w, LinearLayout.LayoutParams.WRAP_CONTENT).apply { this.topMargin = topMargin })
         p.addView(header, LinearLayout.LayoutParams(w, LinearLayout.LayoutParams.WRAP_CONTENT))
         add(statusText); add(progressText)
-        add(scriptButton); add(scriptList, dp(4))
+        add(scriptButton)
         add(stageRow)
-        add(delayBtn); add(delayPanel, dp(4))
+        add(delayBtn)
         add(runButton); add(tools)
         return p
     }
@@ -225,25 +230,59 @@ class ControlOverlay(
         minWidth = 0; minHeight = 0
     }
 
+    /** A floating card (title + 返回 + scrollable content) that overlays the panel. */
+    private fun makePopupCard(title: String, content: View): LinearLayout {
+        val card = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = rounded(cPanel, 12, cAccent)
+            setPadding(dp(10), dp(8), dp(10), dp(10))
+            visibility = View.GONE
+            elevation = dp(10).toFloat()
+        }
+        val head = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        val t = TextView(context).apply { text = title; setTextColor(cInk); textSize = 13f; setTypeface(typeface, Typeface.BOLD) }
+        val close = makeBtn("返回", cField).apply { textSize = 12f; setOnClickListener { card.visibility = View.GONE } }
+        head.addView(t, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        head.addView(close, LinearLayout.LayoutParams(dp(56), dp(32)))
+        card.addView(head, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        card.addView(
+            boundedScroll(content, 240),
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(6) },
+        )
+        return card
+    }
+
+    /** ScrollView that wraps content but never grows past [maxDp] tall (then scrolls). */
+    private fun boundedScroll(content: View, maxDp: Int): ScrollView {
+        val sv = object : ScrollView(context) {
+            override fun onMeasure(widthSpec: Int, heightSpec: Int) {
+                super.onMeasure(widthSpec, MeasureSpec.makeMeasureSpec(dp(maxDp), MeasureSpec.AT_MOST))
+            }
+        }
+        sv.isVerticalScrollBarEnabled = true
+        sv.addView(content, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT))
+        return sv
+    }
+
     // ---- actions ----
     private fun setExpanded(expanded: Boolean) {
         if (root == null) return
         if (expanded) {
             refreshScriptButton()
             stageValue.text = RunPrefs.startStage(context).toString()
-            scriptList.visibility = View.GONE
-            delayPanel.visibility = View.GONE
         }
+        scriptPopup.visibility = View.GONE
+        delayPopup.visibility = View.GONE
         collapsed.visibility = if (expanded) View.GONE else View.VISIBLE
         panel.visibility = if (expanded) View.VISIBLE else View.GONE
     }
 
     // ---- 腳本下拉（自繪，避開懸浮窗 Spinner 焦點問題）----
     private fun toggleScriptList() {
-        if (scriptList.visibility == View.VISIBLE) { scriptList.visibility = View.GONE; return }
-        delayPanel.visibility = View.GONE
+        if (scriptPopup.visibility == View.VISIBLE) { scriptPopup.visibility = View.GONE; return }
+        delayPopup.visibility = View.GONE
         populateScriptList()
-        scriptList.visibility = View.VISIBLE
+        scriptPopup.visibility = View.VISIBLE
     }
 
     private fun populateScriptList() {
@@ -265,7 +304,7 @@ class ControlOverlay(
                 setOnClickListener {
                     ScriptStore.setSelected(context, s.id)
                     refreshScriptButton()
-                    scriptList.visibility = View.GONE
+                    scriptPopup.visibility = View.GONE
                 }
             }
             scriptList.addView(
@@ -285,10 +324,10 @@ class ControlOverlay(
     private fun saveDelays(v: IntArray) = DelayPrefs.save(context, v[0], v[1], v[2], v[3], v[4], v[5])
 
     private fun toggleDelayPanel() {
-        if (delayPanel.visibility == View.VISIBLE) { delayPanel.visibility = View.GONE; return }
-        scriptList.visibility = View.GONE
+        if (delayPopup.visibility == View.VISIBLE) { delayPopup.visibility = View.GONE; return }
+        scriptPopup.visibility = View.GONE
         populateDelayPanel()
-        delayPanel.visibility = View.VISIBLE
+        delayPopup.visibility = View.VISIBLE
     }
 
     private fun populateDelayPanel() {
@@ -324,9 +363,7 @@ class ControlOverlay(
                 saveDelays(values)
             }
         }
-        val back = makeBtn("返回", cField).apply { textSize = 12f; setOnClickListener { delayPanel.visibility = View.GONE } }
-        bottom.addView(reset, LinearLayout.LayoutParams(0, dp(34), 1f).apply { rightMargin = dp(4) })
-        bottom.addView(back, LinearLayout.LayoutParams(0, dp(34), 1f).apply { leftMargin = dp(4) })
+        bottom.addView(reset, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(34)))
         delayPanel.addView(bottom, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
     }
 
