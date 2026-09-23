@@ -24,13 +24,18 @@ import org.opencv.imgproc.Imgproc
  */
 object CardDetector {
 
-    // Portrait (art-only) filters, as fractions of the frame — from the samples.
-    private const val MIN_H_FRAC = 0.24f  // portrait height ≥ 24% of screen height
+    // Raw-detection filters, as fractions of the frame — accept either a
+    // portrait-only box (aspect ~0.71, ~0.30h) or a portrait+name box
+    // (aspect ~0.55, ~0.42h); we regularize afterward.
+    private const val MIN_H_FRAC = 0.22f
     private const val MAX_H_FRAC = 0.48f
-    private const val MIN_ASPECT = 0.52f  // portrait w/h (175/248 ≈ 0.71)
+    private const val MIN_ASPECT = 0.45f
     private const val MAX_ASPECT = 0.95f
-    // Extend the portrait box down to include the name plate (≈ 49/248).
-    private const val NAME_EXTEND = 0.20f
+    // Full card width/height from the samples (181×306). Detected boxes are
+    // snapped to this aspect (anchored at their top edge) so the saved crop is
+    // always the whole card: too-tall boxes lose the sliver below, portrait-only
+    // boxes gain the name plate.
+    private const val CARD_ASPECT = 0.59f
     private const val IOU_DEDUP = 0.55f   // drop near-duplicate boxes
     private const val MAX_CARDS = 20
 
@@ -66,10 +71,11 @@ object CardDetector {
             if (rh < MIN_H_FRAC * h || rh > MAX_H_FRAC * h) continue
             val aspect = rw / rh
             if (aspect < MIN_ASPECT || aspect > MAX_ASPECT) continue
-            // Extend down for the name plate, clamped to the image.
+            // Snap to the full-card aspect, anchored at the detected top edge.
+            val left = r.x.toFloat()
             val top = r.y.toFloat()
-            val bottom = (r.y + rh * (1f + NAME_EXTEND)).coerceAtMost(h)
-            cards += RectF(r.x.toFloat(), top, (r.x + rw), bottom)
+            val cardH = (rw / CARD_ASPECT).coerceAtMost(h - top)
+            cards += RectF(left, top, left + rw, top + cardH)
         }
         return dedupe(cards).sortedWith(compareBy({ it.top / (0.1f * h) }, { it.left })).take(MAX_CARDS)
     }

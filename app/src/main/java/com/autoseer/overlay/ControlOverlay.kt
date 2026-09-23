@@ -407,6 +407,11 @@ class ControlOverlay(
         statusText.post { statusText.text = text }
     }
 
+    /** Hide/show the whole overlay so it doesn't appear in a screen capture. */
+    fun setChromeVisible(visible: Boolean) {
+        root?.post { root?.visibility = if (visible) View.VISIBLE else View.GONE }
+    }
+
     fun setProgress(stageNo: Int, cleared: Int) {
         progressText.post { progressText.text = "目前進度：第 $stageNo 關｜已清 $cleared 關" }
     }

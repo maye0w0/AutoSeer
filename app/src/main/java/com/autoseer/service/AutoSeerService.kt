@@ -190,9 +190,13 @@ class AutoSeerService : Service() {
      */
     private fun captureCardsForReview() {
         val cap = capture ?: run { overlay?.setStatus("尚未就緒，無法擷取"); return }
+        // 先隱藏懸浮窗，避免面板出現在截圖裡遮住卡。
+        overlay?.setChromeVisible(false)
         Thread {
             try {
+                Thread.sleep(CHROME_HIDE_MS)   // 等合成器把面板移出畫面
                 val bmp = cap.captureColorBitmap()
+                overlay?.setChromeVisible(true)   // 抓到影格後即恢復懸浮窗
                 val file = File(cacheDir, "cardcap_${System.currentTimeMillis()}.png")
                 FileOutputStream(file).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
                 bmp.recycle()
@@ -203,6 +207,7 @@ class AutoSeerService : Service() {
                 startActivity(intent)
                 overlay?.setStatus("已擷取畫面，開啟檢視頁裁卡")
             } catch (e: Throwable) {
+                overlay?.setChromeVisible(true)
                 Log.e(TAG, "擷取卡失敗", e)
                 overlay?.setStatus("擷取卡失敗：${e.message}")
             }
@@ -275,6 +280,7 @@ class AutoSeerService : Service() {
     companion object {
         private const val TAG = "AutoSeer"
         private const val NOTIF_ID = 1001
+        private const val CHROME_HIDE_MS = 150L   // 擷取前隱藏懸浮窗、等畫面更新的時間
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_DATA = "result_data"
         const val ACTION_STOP = "com.autoseer.action.STOP"
