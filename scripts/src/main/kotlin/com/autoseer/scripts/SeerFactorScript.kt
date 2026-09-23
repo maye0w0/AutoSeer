@@ -6,15 +6,18 @@ import com.autoseer.libautomata.Script
 import com.autoseer.libautomata.Templates
 
 /**
- * 「精靈因子」關卡自動掃蕩，依標註 PPT 的流程組裝可復用視覺模塊（[SeerModules]）
- * 與戰鬥核心（[BattleTurnRunner]）：
+ * 「精靈因子」關卡自動掃蕩，依標註 PPT（20260921 新版，36 頁）的完整流程組裝可復用
+ * 視覺模塊（[SeerModules]）與戰鬥核心（[BattleTurnRunner]）：
  *
- *   反覆：精靈恢復 →（每日首次提示?→確認）→ 等恢復完成字樣 → 進入戰鬥 →
- *        等你的回合 → 依該關技能排序戰鬥 → 勝利→點擊繼續（下一關）
+ *   反覆：開啟/繼續挑戰 → 精靈恢復 →（每日首次提示?→確認）→ 等恢復完成字樣 →
+ *        進入戰鬥 → 等你的回合 → 依該關技能排序戰鬥 → 戰鬥結束：
+ *          勝利 → 點繼續 → 下一關
+ *          失敗 → 點繼續 → 繼續挑戰 → 重打同一關（達每關重試上限才停）
  *   直到「達到每天操作上限」出現 → 確認 → 回大廳 → 結束。
  *
- * 全程全螢幕辨識、點在找到處；固定座標只用於兩個「確認」按鈕。關卡技能沿用
- * 使用者腳本的 [BattlePlan]，第幾關由 [BattlePlan.stageIndexFor] 環繞決定（FR-1）。
+ * 停止條件改為「持續到達到上限」（不再用清關場數/循環輪數），另設高安全上限防呆。
+ * 關卡技能沿用使用者腳本的 [BattlePlan]，第幾關由 [BattlePlan.stageIndexFor] 環繞
+ * 決定（FR-1）；失敗重打時 battlesDone 不變、關 index 不變。
  */
 class SeerFactorScript(
     api: AutomataApi,
@@ -31,39 +34,40 @@ class SeerFactorScript(
     private val m = SeerModules(api, templates)
     private val runner = BattleTurnRunner(api, templates, delays)
 
+    private var retriesThisStage = 0
+    private var stop = false
+
     override fun run() {
-        api.logger.i("精靈因子掃蕩開始：每輪關數=${plan.stagesPerLoop}, 循環=${plan.loops}")
+        api.logger.i("精靈因子掃蕩開始：每輪關數=${plan.stagesPerLoop}, 起始關=${plan.startStage}")
         var unknown = 0
-        while (true) {
-            if (reachedLimit()) { api.logger.i("已達安全上限（清 $battlesDone 關），停止。"); break }
+        var iterations = 0
+        while (!stop) {
+            if (++iterations > SAFETY_CAP) { api.logger.w("達安全上限（$SAFETY_CAP），停止防呆。"); break }
             api.refreshScreen()
 
             // 次數用盡：整個掃蕩結束 → 回大廳
-            if (m.exists(SeerTemplates.DAILY_LIMIT)) {
-                api.logger.i("偵測到『達到每天操作上限』→ 確認並回大廳")
-                api.click(DAILY_LIMIT_CONFIRM)
-                api.sleep(delays.afterResultTap)
-                backToLobby()
-                break
-            }
+            if (m.exists(SeerTemplates.DAILY_LIMIT)) { onDailyLimit(); break }
 
             // 已在戰鬥中（你的回合）？直接打這一關。
-            if (m.exists(SeerTemplates.BATTLE_ACTION)) {
-                fightThisStage(); unknown = 0; continue
-            }
-            // 勝利結算殘留 → 點繼續。
-            if (m.exists(SeerTemplates.RESULT_WIN)) {
-                m.tapIfPresent(SeerTemplates.RESULT_WIN); api.sleep(delays.afterResultTap); unknown = 0; continue
+            if (m.exists(SeerTemplates.BATTLE_ACTION)) { fightThisStage(); unknown = 0; continue }
+
+            // 結算殘留（點擊繼續字樣仍在）→ 點空白略過，避免卡住。
+            if (m.exists(SeerTemplates.TAP_CONTINUE) ||
+                m.exists(SeerTemplates.RESULT_WIN) || m.exists(SeerTemplates.RESULT_LOSE)
+            ) {
+                api.click(SeerLayout.VICTORY_CONTINUE); api.sleep(delays.afterResultTap); unknown = 0; continue
             }
 
-            // 前置：開啟挑戰（若在關卡地圖）
-            m.tapIfPresent(SeerTemplates.OPEN_CHALLENGE)
+            // 前置：開啟挑戰（勝利後）或繼續挑戰（失敗後）——兩者擇一。
+            if (!m.tapIfPresent(SeerTemplates.OPEN_CHALLENGE)) {
+                m.tapIfPresent(SeerTemplates.CONTINUE_CHALLENGE)
+            }
 
             // 精靈恢復模塊
             if (m.waitAndTap(SeerTemplates.PET_RECOVER, WAIT_UI_MS)) {
                 api.sleep(delays.afterHeal)
-                // 每日首次恢復提示（若出現）→ 確認
                 api.refreshScreen()
+                // 每日首次恢復提示（若出現）→ 確認
                 if (m.tapFixedIfPresent(SeerTemplates.FIRST_RECOVER_TIP, FIRST_TIP_CONFIRM)) {
                     api.sleep(delays.afterResultTap)
                 }
@@ -81,11 +85,14 @@ class SeerFactorScript(
             }
             api.sleep(delays.afterEnter)
 
+            // 進入戰鬥後可能直接跳「達到每天操作上限」
+            api.refreshScreen()
+            if (m.exists(SeerTemplates.DAILY_LIMIT)) { onDailyLimit(); break }
+
             // 等你的回合（Boss 先制可能久等）
             if (!m.waitAppear(SeerTemplates.BATTLE_ACTION, WAIT_TURN_MS)) {
-                // 也可能直接跳出達到上限
                 api.refreshScreen()
-                if (m.exists(SeerTemplates.DAILY_LIMIT)) continue
+                if (m.exists(SeerTemplates.DAILY_LIMIT)) { onDailyLimit(); break }
                 if (++unknown >= STUCK_LIMIT) { api.logger.w("等不到你的回合，停止。"); break }
                 continue
             }
@@ -94,22 +101,58 @@ class SeerFactorScript(
         api.logger.i("精靈因子掃蕩結束，共清 $battlesDone 關。")
     }
 
-    /** 打當前這一關，勝利後點繼續並累加。 */
+    /** 打當前這一關並依勝/敗分流。 */
     private fun fightThisStage() {
-        val stage = plan.forStage(plan.stageIndexFor(battlesDone))
-        val label = "（第 ${plan.stageIndexFor(battlesDone) + 1} 關｜已清 $battlesDone）"
+        val stageIdx = plan.stageIndexFor(battlesDone)
+        val stage = plan.forStage(stageIdx)
+        val label = "（第 ${stageIdx + 1} 關｜已清 $battlesDone｜重試 $retriesThisStage）"
         when (runner.fight(stage.steps, plan.defaultCode, label)) {
-            BattleTurnRunner.Result.WIN -> {
-                battlesDone++
-                api.logger.i("勝利！已清 $battlesDone 關 → 點擊繼續")
-                m.waitAndTap(SeerTemplates.RESULT_WIN, WAIT_UI_MS)
-                api.sleep(delays.afterResultTap)
+            BattleTurnRunner.Result.WIN -> onWin()
+            BattleTurnRunner.Result.LOSE -> onLose("失敗")
+            BattleTurnRunner.Result.PLAN_EXHAUSTED -> {
+                api.logger.w("此關技能排序跑完仍未勝利 → 撤退")
+                m.retreat(delays)          // 撤退後會走到「失敗」結算
+                onLose("撤退")
             }
-            BattleTurnRunner.Result.PLAN_EXHAUSTED ->
-                api.logger.w("此關技能排序跑完仍未勝利（暫不自動撤退，之後補失敗處理）。")
-            BattleTurnRunner.Result.STUCK ->
-                api.logger.w("戰鬥中畫面卡住。")
+            BattleTurnRunner.Result.STUCK -> api.logger.w("戰鬥中畫面卡住，回主迴圈重試。")
         }
+    }
+
+    /** 勝利：點繼續 → 累加 → 下一關（重試計數歸零）。 */
+    private fun onWin() {
+        battlesDone++
+        retriesThisStage = 0
+        api.logger.i("勝利！已清 $battlesDone 關 → 點擊繼續，進入下一關")
+        dismissResultScreen()
+    }
+
+    /** 失敗/撤退：點繼續 → 重打同一關；連續失敗超過每關重試上限則回大廳並停。 */
+    private fun onLose(reason: String) {
+        retriesThisStage++
+        dismissResultScreen()
+        val limit = plan.maxRetriesPerStage
+        if (limit > 0 && retriesThisStage > limit) {
+            api.logger.w("第 ${plan.stageIndexFor(battlesDone) + 1} 關連續 $reason 超過重試上限（$limit）→ 回大廳並停止。")
+            backToLobby()
+            stop = true
+        } else {
+            api.logger.i("$reason → 準備重打同一關（第 ${retriesThisStage} 次重試）")
+        }
+    }
+
+    /** 戰鬥結束畫面：等「點擊任意位置繼續」出現，點空白區繼續 → 回關卡頁。 */
+    private fun dismissResultScreen() {
+        m.waitAppear(SeerTemplates.TAP_CONTINUE, WAIT_UI_MS)
+        api.click(SeerLayout.VICTORY_CONTINUE)
+        api.sleep(delays.afterResultTap)
+    }
+
+    /** 達到每天操作上限 → 確認 → 回大廳。 */
+    private fun onDailyLimit() {
+        api.logger.i("偵測到『達到每天操作上限』→ 確認並回大廳")
+        api.click(DAILY_LIMIT_CONFIRM)
+        api.sleep(delays.afterResultTap)
+        backToLobby()
     }
 
     /** 回大廳模塊：快速功能選單 → 小房子 → 等航行指南出現。 */
@@ -121,12 +164,6 @@ class SeerFactorScript(
         else api.logger.w("未確認回到大廳（航行指南未出現）。")
     }
 
-    private fun reachedLimit(): Boolean {
-        if (plan.maxBattles > 0 && battlesDone >= plan.maxBattles) return true
-        val target = plan.clearsTarget()
-        return target > 0 && battlesDone >= target
-    }
-
     companion object {
         // 「確認」按鈕固定座標（正規化 1280x720，量自 PPT）。
         private val FIRST_TIP_CONFIRM = Location(723, 486)   // 每日首次恢復提示 → 確認
@@ -135,5 +172,6 @@ class SeerFactorScript(
         private const val WAIT_UI_MS = 12_000L
         private const val WAIT_TURN_MS = 90_000L  // 等你的回合（先制/長開場）
         private const val STUCK_LIMIT = 40
+        private const val SAFETY_CAP = 200        // 防呆：正常會由「達到上限」先結束
     }
 }

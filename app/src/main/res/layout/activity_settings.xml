@@ -53,17 +53,17 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:text="@string/opt_loops"
+                            android:text="@string/opt_start"
                             android:textColor="@color/white" />
 
                         <EditText
-                            android:id="@+id/editLoops"
+                            android:id="@+id/editStartStage"
                             android:layout_width="80dp"
                             android:layout_height="wrap_content"
                             android:inputType="number"
                             android:gravity="end"
                             android:textColor="@color/white"
-                            android:text="3" />
+                            android:text="1" />
                     </LinearLayout>
 
                     <LinearLayout

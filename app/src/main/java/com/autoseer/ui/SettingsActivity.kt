@@ -30,7 +30,7 @@ class SettingsActivity : AppCompatActivity() {
     }
 
     private fun load() {
-        binding.editLoops.setText(RunPrefs.loops(this).toString())
+        binding.editStartStage.setText(RunPrefs.startStage(this).toString())
         binding.editDefaultSlot.setText(RunPrefs.defaultSlot(this).toString())
         binding.healSwitch.isChecked = RunPrefs.healBeforeBattle(this)
     }
@@ -38,7 +38,7 @@ class SettingsActivity : AppCompatActivity() {
     private fun save() {
         RunPrefs.save(
             ctx = this,
-            loops = binding.editLoops.text.toString().toIntOrNull() ?: 3,
+            startStage = binding.editStartStage.text.toString().toIntOrNull() ?: 1,
             defaultSlot = binding.editDefaultSlot.text.toString().toIntOrNull() ?: 2,
             healBeforeBattle = binding.healSwitch.isChecked,
         )

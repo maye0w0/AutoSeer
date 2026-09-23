@@ -56,4 +56,50 @@ class SeerModules(
         api.click(point)
         return true
     }
+
+    /**
+     * 「撤退」通用判斷 (PPT s14–18): 撤退 → 等「你確定要撤退嗎」→ 確認 → 等「恭喜你，
+     * 成功撤退」→ 確認. Template-gated (fixed 確認 coords from [SeerLayout]) instead
+     * of the old blind paced-tap loop, so it stops the moment each dialog is seen.
+     * If 撤退 is greyed out because the on-field pet is 已戰敗, deploys one first.
+     * Returns true once the retreat dialogs are cleared.
+     */
+    fun retreat(delays: BattleDelays): Boolean {
+        api.logger.i("嘗試撤退…")
+        repeat(RETREAT_ATTEMPTS) {
+            api.refreshScreen()
+            if (exists(SeerTemplates.PET_DEFEATED)) deployAnyPet(delays)
+            api.click(SeerLayout.RETREAT.center)                 // 撤退 (code 9)
+            api.sleep(delays.afterRetreatTap)
+            if (waitAppear(SeerTemplates.RETREAT_TIP, RETREAT_WAIT_MS)) {
+                api.click(SeerLayout.RETREAT_CONFIRM)            // 你確定要撤退嗎 → 確認
+                api.sleep(delays.afterRetreatTap)
+                if (waitAppear(SeerTemplates.RETREAT_SUCCESS, RETREAT_WAIT_MS)) {
+                    api.click(SeerLayout.RETREAT_SUCCESS_CONFIRM) // 恭喜你，成功撤退 → 確認
+                    api.sleep(delays.afterRetreatTap)
+                }
+                return true
+            }
+        }
+        api.logger.w("撤退未成功（撤退視窗未出現）")
+        return false
+    }
+
+    /** Deploy an alive pet to un-grey 撤退 / unstick, when the field pet is 已戰敗. */
+    private fun deployAnyPet(delays: BattleDelays) {
+        var tries = 0
+        while (exists(SeerTemplates.PET_DEFEATED) && tries < SeerLayout.PET_COUNT) {
+            val slot = SeerLayout.PET_SLOTS.getOrNull(tries) ?: break
+            api.click(SeerLayout.PET.center); api.sleep(500); api.refreshScreen()
+            api.click(slot); api.sleep(300)
+            api.swipe(slot, Location(slot.x, slot.y - SeerLayout.PET_DEPLOY_UP_PX), 450)
+            api.sleep(delays.afterSwitch); api.refreshScreen()
+            tries++
+        }
+    }
+
+    companion object {
+        private const val RETREAT_ATTEMPTS = 3
+        private const val RETREAT_WAIT_MS = 6_000L
+    }
 }

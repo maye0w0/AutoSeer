@@ -10,7 +10,12 @@ import com.autoseer.libautomata.Region
  */
 object SeerTemplates {
     const val BATTLE_ACTION = "state/battle_action"   // 「你的回合」
-    const val RESULT_WIN = "state/result_win"         // 「勝利」
+    const val RESULT_WIN = "state/result_win"         // 戰鬥結束頂端「勝利」菱形
+    const val RESULT_LOSE = "state/result_lose"       // 戰鬥結束頂端「失敗」菱形
+    const val TAP_CONTINUE = "state/tap_continue"     // 「點擊任意位置繼續」字樣（勝/敗皆有）
+    const val RETREAT_TIP = "state/retreat_tip"       // 「你確定要撤退嗎?」對話框
+    const val RETREAT_SUCCESS = "state/retreat_success" // 「恭喜你，成功撤退!」對話框
+    const val CONTINUE_CHALLENGE = "stage/continue_challenge" // 失敗後關卡頁「繼續挑戰」鈕
     const val ENTER_BATTLE = "stage/enter_battle"     // 「進入戰鬥」按鈕
     const val WAIT_CHALLENGE = "stage/wait_challenge" // 可挑戰節點的「等待挑戰」標籤
     const val PET_DEFEATED = "state/pet_defeated"     // 換精靈介面某卡的「已戰敗」＝上場精靈陣亡
@@ -29,8 +34,10 @@ object SeerTemplates {
 
     /** All template ids the automation looks for (used by the detection probe). */
     val ALL = listOf(
-        BATTLE_ACTION, RESULT_WIN, ENTER_BATTLE, WAIT_CHALLENGE, PET_DEFEATED, OUT_OF_STAMINA,
+        BATTLE_ACTION, RESULT_WIN, RESULT_LOSE, TAP_CONTINUE, ENTER_BATTLE, WAIT_CHALLENGE,
+        PET_DEFEATED, OUT_OF_STAMINA,
         OPEN_CHALLENGE, PET_RECOVER, FIRST_RECOVER_TIP, RECOVER_FULL, RECOVER_CANNOT,
+        RETREAT_TIP, RETREAT_SUCCESS, CONTINUE_CHALLENGE,
         DAILY_LIMIT, QUICK_MENU, HOME_BTN, NAV_GUIDE,
     )
 }

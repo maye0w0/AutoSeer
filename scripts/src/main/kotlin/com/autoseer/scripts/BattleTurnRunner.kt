@@ -15,14 +15,17 @@ class BattleTurnRunner(
     private val templates: Templates,
     private val delays: BattleDelays = BattleDelays.default(),
 ) {
-    enum class Result { WIN, PLAN_EXHAUSTED, STUCK }
+    enum class Result { WIN, LOSE, PLAN_EXHAUSTED, STUCK }
 
     private var stepIndex = 0
 
     /**
      * Fight the current battle. [steps] empty = spam [defaultCode] every turn.
-     * Returns WIN when 勝利 appears, PLAN_EXHAUSTED if the tactics run out before
-     * winning, STUCK if nothing recognizable happens for a long time.
+     * Ends when the result screen shows: returns WIN on 「勝利」 or LOSE on
+     * 「失敗」 (both screens also carry 「點擊任意位置繼續」, so the top diamond is
+     * what distinguishes them — miscropping RESULT_WIN as the continue text was
+     * why losses were once counted as wins). PLAN_EXHAUSTED if the tactics run
+     * out before the battle ends; STUCK if nothing recognizable happens.
      */
     fun fight(steps: List<Step>, defaultCode: Int, label: String = ""): Result {
         stepIndex = 0
@@ -32,6 +35,9 @@ class BattleTurnRunner(
             api.refreshScreen()
             when {
                 exists(SeerTemplates.RESULT_WIN) -> return Result.WIN
+                exists(SeerTemplates.RESULT_LOSE) -> return Result.LOSE
+                // Continue text present but neither diamond matched yet: settle then classify.
+                exists(SeerTemplates.TAP_CONTINUE) -> return resolveOutcome()
                 exists(SeerTemplates.PET_DEFEATED) -> {
                     if (!onPetDefeated(steps)) return Result.PLAN_EXHAUSTED
                     unknown = 0
@@ -46,6 +52,22 @@ class BattleTurnRunner(
                 }
             }
         }
+    }
+
+    /**
+     * The result screen is up (「點擊任意位置繼續」 seen) but the win/lose diamond
+     * hasn't matched yet — give the animation a moment and read it. Defaults to
+     * WIN only if 失敗 is never seen, and logs when it had to guess.
+     */
+    private fun resolveOutcome(): Result {
+        repeat(OUTCOME_POLLS) {
+            if (exists(SeerTemplates.RESULT_LOSE)) return Result.LOSE
+            if (exists(SeerTemplates.RESULT_WIN)) return Result.WIN
+            api.sleep(300)
+            api.refreshScreen()
+        }
+        api.logger.w("戰鬥結束但未讀到勝利/失敗字樣，暫以勝利處理")
+        return Result.WIN
     }
 
     /** Returns false when the plan is exhausted before 勝利 (failure). */
@@ -112,5 +134,6 @@ class BattleTurnRunner(
     companion object {
         private const val STUCK_LIMIT = 80
         private const val TURN_SETTLE_MS = 12_000L
+        private const val OUTCOME_POLLS = 6   // ~1.8s to read the win/lose diamond
     }
 }

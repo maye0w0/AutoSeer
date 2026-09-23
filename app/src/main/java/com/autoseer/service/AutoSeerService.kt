@@ -143,9 +143,9 @@ class AutoSeerService : Service() {
             healBeforeBattle = RunPrefs.healBeforeBattle(this),
             advanceMap = script.advanceMap,
             defaultSlot = RunPrefs.defaultSlot(this),
-            startStage = script.startStage,
+            startStage = RunPrefs.startStage(this),
             maxRetriesPerStage = script.maxRetries,
-            loops = RunPrefs.loops(this),
+            // 循環輪數已移除：精靈因子改由「達到每天操作上限」自然結束（SeerFactorScript）。
         )
         parsed.warnings.forEach { Log.w(TAG, "計畫解析警告：$it") }
         val delays = DelayPrefs.toBattleDelays(this)
