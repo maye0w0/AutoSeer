@@ -67,9 +67,9 @@ class SeerFactorScript(
             // 出現＝關卡資訊卡已展開。改「固定點＋驗證」取代繼續挑戰樣板辨識（實機不穩、
             // 導致失敗後資訊卡沒展開、重打卡住 A1-2）。
             if (!m.exists(SeerTemplates.PET_RECOVER)) {
-                val opened = m.tapUntilAppears(SeerTemplates.PET_RECOVER, ENTRY_TRIES) {
+                // 點完立即快輪詢「精靈恢復」是否出現（不再塞固定 sleep）——展開資訊卡加速。
+                val opened = m.tapUntilAppears(SeerTemplates.PET_RECOVER, ENTRY_TRIES, ENTRY_POLL_MS) {
                     api.click(SeerLayout.CONTINUE_CHALLENGE)   // =(1168,622)，開啟/繼續挑戰同位置
-                    api.sleep(delays.afterResultTap)
                 }
                 if (!opened) {
                     api.logger.w("點開啟/繼續挑戰後未見『精靈恢復』（關卡資訊卡未展開）")
@@ -79,19 +79,29 @@ class SeerFactorScript(
                 api.logger.i("關卡資訊卡已展開（偵測到精靈恢復）")
             }
 
-            // 精靈恢復模塊
+            // 精靈恢復模塊（純視覺閘：點恢復後直接輪詢下一狀態，不塞固定 afterHeal 睡眠）
             if (m.waitAndTap(SeerTemplates.PET_RECOVER, WAIT_UI_MS)) {
-                api.sleep(delays.afterHeal)
-                api.refreshScreen()
-                // 每日首次恢復提示（若出現）→ 確認
-                if (m.tapFixedIfPresent(SeerTemplates.FIRST_RECOVER_TIP, FIRST_TIP_CONFIRM)) {
-                    api.sleep(delays.afterResultTap)
-                }
-                // 等恢復完成字樣（全部恢復 or 已滿）；沒出現就重跑一輪（回頭再恢復）
-                val ok = m.waitAppearAny(
-                    listOf(SeerTemplates.RECOVER_FULL, SeerTemplates.RECOVER_CANNOT), WAIT_UI_MS,
+                // 等（每日首次提示 / 全部恢復 / 已滿無法恢復）任一出現
+                val first = m.waitAppearAny(
+                    listOf(
+                        SeerTemplates.FIRST_RECOVER_TIP,
+                        SeerTemplates.RECOVER_FULL,
+                        SeerTemplates.RECOVER_CANNOT,
+                    ),
+                    WAIT_UI_MS,
                 )
-                if (ok == null) { api.logger.w("未偵測到恢復完成字樣，重試恢復"); continue }
+                when (first) {
+                    SeerTemplates.FIRST_RECOVER_TIP -> {
+                        // 每日首次恢復提示 → 確認 → 再等恢復完成字樣
+                        api.click(FIRST_TIP_CONFIRM)
+                        if (m.waitAppearAny(
+                                listOf(SeerTemplates.RECOVER_FULL, SeerTemplates.RECOVER_CANNOT), WAIT_UI_MS,
+                            ) == null
+                        ) { api.logger.w("首次提示確認後未見恢復完成字樣，重試恢復"); continue }
+                    }
+                    null -> { api.logger.w("未偵測到恢復完成字樣，重試恢復"); continue }
+                    else -> { /* 已見全部恢復 / 已滿字樣，續走進入戰鬥 */ }
+                }
             }
 
             // 進入戰鬥
@@ -205,5 +215,6 @@ class SeerFactorScript(
         private const val SAFETY_CAP = 200        // 防呆：正常會由「達到上限」先結束
         private const val DISMISS_TRIES = 5       // 結算畫面點繼續的重試次數
         private const val ENTRY_TRIES = 5         // 點開啟/繼續挑戰、等資訊卡展開的重試次數
+        private const val ENTRY_POLL_MS = 180L    // 展開資訊卡：點擊後快速輪詢「精靈恢復」的間隔
     }
 }

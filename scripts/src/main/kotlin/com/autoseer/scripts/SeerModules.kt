@@ -63,10 +63,10 @@ class SeerModules(
      * "take" (the game ignores taps until a dialog fully settles) — verify the
      * next state actually arrived instead of blindly moving on.
      */
-    fun tapUntilAppears(expectId: String, tries: Int, tap: () -> Unit): Boolean {
+    fun tapUntilAppears(expectId: String, tries: Int, pollMs: Long = 200L, tap: () -> Unit): Boolean {
         repeat(tries) {
             tap()
-            if (waitAppear(expectId, STEP_WAIT_MS)) return true
+            if (waitAppear(expectId, STEP_WAIT_MS, pollMs)) return true
         }
         return exists(expectId)
     }
