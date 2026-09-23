@@ -79,29 +79,28 @@ class SeerFactorScript(
                 api.logger.i("關卡資訊卡已展開（偵測到精靈恢復）")
             }
 
-            // 精靈恢復模塊（純視覺閘：點恢復後直接輪詢下一狀態，不塞固定 afterHeal 睡眠）
-            if (m.waitAndTap(SeerTemplates.PET_RECOVER, WAIT_UI_MS)) {
-                // 等（每日首次提示 / 全部恢復 / 已滿無法恢復）任一出現
-                val first = m.waitAppearAny(
-                    listOf(
-                        SeerTemplates.FIRST_RECOVER_TIP,
-                        SeerTemplates.RECOVER_FULL,
-                        SeerTemplates.RECOVER_CANNOT,
-                    ),
-                    WAIT_UI_MS,
-                )
-                when (first) {
-                    SeerTemplates.FIRST_RECOVER_TIP -> {
-                        // 每日首次恢復提示 → 確認 → 再等恢復完成字樣
-                        api.click(FIRST_TIP_CONFIRM)
-                        if (m.waitAppearAny(
-                                listOf(SeerTemplates.RECOVER_FULL, SeerTemplates.RECOVER_CANNOT), WAIT_UI_MS,
-                            ) == null
-                        ) { api.logger.w("首次提示確認後未見恢復完成字樣，重試恢復"); continue }
-                    }
-                    null -> { api.logger.w("未偵測到恢復完成字樣，重試恢復"); continue }
-                    else -> { /* 已見全部恢復 / 已滿字樣，續走進入戰鬥 */ }
+            // 精靈恢復模塊（純視覺閘）：邊點「精靈恢復」邊快輪詢字樣——字樣是真正的閘，
+            // 在它出現前多點幾次精靈恢復無害，故用「點到任一字樣出現」取代「點一次枯等逾時」。
+            val first = m.tapUntilAppearsAny(
+                listOf(
+                    SeerTemplates.FIRST_RECOVER_TIP,
+                    SeerTemplates.RECOVER_FULL,
+                    SeerTemplates.RECOVER_CANNOT,
+                ),
+                RECOVER_TRIES, RECOVER_POLL_MS,
+            ) { m.tapIfPresent(SeerTemplates.PET_RECOVER) }
+            when (first) {
+                SeerTemplates.FIRST_RECOVER_TIP -> {
+                    // 每日首次恢復提示 → 確認 → 再快輪詢恢復完成字樣
+                    api.click(FIRST_TIP_CONFIRM)
+                    if (m.waitAppearAny(
+                            listOf(SeerTemplates.RECOVER_FULL, SeerTemplates.RECOVER_CANNOT),
+                            WAIT_UI_MS, RECOVER_POLL_MS,
+                        ) == null
+                    ) { api.logger.w("首次提示確認後未見恢復完成字樣，重試恢復"); continue }
                 }
+                null -> { api.logger.w("未偵測到恢復完成字樣，重試恢復"); continue }
+                else -> { /* 已見全部恢復 / 已滿字樣，續走進入戰鬥 */ }
             }
 
             // 進入戰鬥
@@ -216,5 +215,7 @@ class SeerFactorScript(
         private const val DISMISS_TRIES = 5       // 結算畫面點繼續的重試次數
         private const val ENTRY_TRIES = 5         // 點開啟/繼續挑戰、等資訊卡展開的重試次數
         private const val ENTRY_POLL_MS = 180L    // 展開資訊卡：點擊後快速輪詢「精靈恢復」的間隔
+        private const val RECOVER_TRIES = 5       // 精靈恢復：點到恢復字樣出現的重試次數
+        private const val RECOVER_POLL_MS = 180L  // 精靈恢復：快輪詢恢復完成字樣的間隔
     }
 }

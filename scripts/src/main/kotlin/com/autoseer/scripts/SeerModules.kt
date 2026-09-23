@@ -71,6 +71,22 @@ class SeerModules(
         return exists(expectId)
     }
 
+    /**
+     * Like [tapUntilAppears] but waits for ANY of [expectIds]; returns the id that
+     * appeared, or null after [tries]. Use when a single tap may need repeating and
+     * extra taps are harmless (e.g. 精靈恢復: the visual 字樣 is the real gate, so
+     * tapping the button a few more times before it shows costs nothing).
+     */
+    fun tapUntilAppearsAny(
+        expectIds: List<String>, tries: Int, pollMs: Long = 200L, tap: () -> Unit,
+    ): String? {
+        repeat(tries) {
+            tap()
+            waitAppearAny(expectIds, STEP_WAIT_MS, pollMs)?.let { return it }
+        }
+        return null
+    }
+
     /** Tap [point] until [goneId] is no longer on screen (result-screen dismiss). */
     fun tapPointUntilGone(goneId: String, point: Location, tries: Int, betweenMs: Long): Boolean {
         repeat(tries) {
