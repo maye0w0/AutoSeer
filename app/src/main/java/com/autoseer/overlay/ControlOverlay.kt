@@ -34,6 +34,7 @@ class ControlOverlay(
     private val onStop: () -> Unit,
     private val onCapture: () -> Unit = {},
     private val onProbe: () -> Unit = {},
+    private val onCaptureCards: () -> Unit = {},
 ) {
     private val windowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -205,8 +206,10 @@ class ControlOverlay(
         val tools = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         val cap = makeBtn("存畫面", cField).apply { textSize = 12f; setOnClickListener { onCapture() } }
         val probe = makeBtn("測試偵測", cField).apply { textSize = 12f; setOnClickListener { onProbe() } }
-        tools.addView(cap, LinearLayout.LayoutParams(0, dp(38), 1f).apply { rightMargin = dp(4) })
-        tools.addView(probe, LinearLayout.LayoutParams(0, dp(38), 1f).apply { leftMargin = dp(4) })
+        val cards = makeBtn("擷取卡", cField).apply { textSize = 12f; setOnClickListener { onCaptureCards() } }
+        tools.addView(cap, LinearLayout.LayoutParams(0, dp(38), 1f).apply { rightMargin = dp(3) })
+        tools.addView(probe, LinearLayout.LayoutParams(0, dp(38), 1f).apply { leftMargin = dp(3); rightMargin = dp(3) })
+        tools.addView(cards, LinearLayout.LayoutParams(0, dp(38), 1f).apply { leftMargin = dp(3) })
 
         val w = dp(250)
         fun add(v: View, topMargin: Int = dp(9)) =

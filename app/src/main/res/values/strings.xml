@@ -10,6 +10,9 @@
     <string name="step_capture">3. 授權螢幕擷取並啟動</string>
     <string name="btn_open_accessibility">開啟無障礙設定</string>
     <string name="btn_grant_overlay">授權懸浮視窗</string>
+    <string name="btn_pet_folder">選擇精靈圖庫資料夾</string>
+    <string name="status_pet_folder_set">精靈圖庫：%1$s</string>
+    <string name="status_pet_folder_none">精靈圖庫：未設定（擷取卡前先選資料夾）</string>
     <string name="btn_start">授權螢幕擷取並啟動</string>
     <string name="btn_stop">停止服務</string>
 

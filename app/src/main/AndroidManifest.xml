@@ -59,6 +59,10 @@
             android:name=".ui.DelaySettingsActivity"
             android:exported="false" />
 
+        <activity
+            android:name=".ui.CardCaptureActivity"
+            android:exported="false" />
+
         <service
             android:name=".service.AutoSeerService"
             android:exported="false"

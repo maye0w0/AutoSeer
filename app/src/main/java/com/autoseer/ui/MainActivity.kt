@@ -12,6 +12,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.autoseer.R
+import com.autoseer.core.PetImagePrefs
+import com.autoseer.core.SafStore
 import com.autoseer.databinding.ActivityMainBinding
 import com.autoseer.input.GestureAccessibilityService
 import com.autoseer.service.AutoSeerService
@@ -38,6 +40,16 @@ class MainActivity : AppCompatActivity() {
 
     private val notificationLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { requestCapture() }
+
+    private val petFolderLauncher =
+        registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+            if (uri != null) {
+                val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                runCatching { contentResolver.takePersistableUriPermission(uri, flags) }
+                PetImagePrefs.setTreeUri(this, uri.toString())
+                refreshStatus()
+            }
+        }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -66,6 +78,8 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
+        binding.btnPetFolder.setOnClickListener { petFolderLauncher.launch(null) }
+
         binding.btnStart.setOnClickListener { ensureNotificationThenCapture() }
         binding.btnStop.setOnClickListener { startService(AutoSeerService.stopIntent(this)) }
     }
@@ -82,6 +96,11 @@ class MainActivity : AppCompatActivity() {
         val overlayOn = Settings.canDrawOverlays(this)
         binding.statusOverlay.text =
             getString(if (overlayOn) R.string.status_overlay_on else R.string.status_overlay_off)
+
+        val tree = PetImagePrefs.treeUri(this)
+        binding.statusPetFolder.text =
+            if (tree.isNullOrBlank()) getString(R.string.status_pet_folder_none)
+            else getString(R.string.status_pet_folder_set, SafStore.folderLabel(tree))
     }
 
     private fun ensureNotificationThenCapture() {

@@ -32,6 +32,7 @@ import com.autoseer.scripts.BattleScript
 import com.autoseer.scripts.BattlePlanParser
 import com.autoseer.scripts.ProbeScript
 import com.autoseer.scripts.SeerFactorScript
+import com.autoseer.ui.CardCaptureActivity
 import java.io.File
 import java.io.FileOutputStream
 
@@ -107,6 +108,7 @@ class AutoSeerService : Service() {
             onStop = { runner?.stop() },
             onCapture = { captureFrame() },
             onProbe = { probeDetection() },
+            onCaptureCards = { captureCardsForReview() },
         )
         this.overlay = overlay
         val logger = AndroidLogger(onLine = { line -> overlay.setStatus(line) })
@@ -178,6 +180,31 @@ class AutoSeerService : Service() {
             } catch (e: Throwable) {
                 Log.e(TAG, "存畫面失敗", e)
                 overlay?.setStatus("存畫面失敗：${e.message}")
+            }
+        }.start()
+    }
+
+    /**
+     * 精靈圖像卡擷取（階段 A）：對當前畫面截一張正規化彩圖，寫成暫存檔，開啟
+     * [CardCaptureActivity] 讓玩家檢視/修正候選卡框並存到自選資料夾。
+     */
+    private fun captureCardsForReview() {
+        val cap = capture ?: run { overlay?.setStatus("尚未就緒，無法擷取"); return }
+        Thread {
+            try {
+                val bmp = cap.captureColorBitmap()
+                val file = File(cacheDir, "cardcap_${System.currentTimeMillis()}.png")
+                FileOutputStream(file).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                bmp.recycle()
+                val intent = Intent(this, CardCaptureActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    putExtra(CardCaptureActivity.EXTRA_PATH, file.absolutePath)
+                }
+                startActivity(intent)
+                overlay?.setStatus("已擷取畫面，開啟檢視頁裁卡")
+            } catch (e: Throwable) {
+                Log.e(TAG, "擷取卡失敗", e)
+                overlay?.setStatus("擷取卡失敗：${e.message}")
             }
         }.start()
     }
