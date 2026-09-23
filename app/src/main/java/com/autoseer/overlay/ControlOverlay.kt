@@ -2,7 +2,6 @@ package com.autoseer.overlay
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.Typeface
@@ -19,7 +18,7 @@ import android.widget.TextView
 import com.autoseer.core.RunPrefs
 import com.autoseer.core.ScriptStore
 import com.autoseer.core.SeerScript
-import com.autoseer.ui.DelaySettingsActivity
+import com.autoseer.core.DelayPrefs
 
 /**
  * FGA-style floating control. Collapsed it is a small draggable dot ("AS") with a
@@ -45,7 +44,9 @@ class ControlOverlay(
     private lateinit var dotView: TextView      // the "AS" circle
     private lateinit var statusText: TextView   // status line (panel)
     private lateinit var progressText: TextView // 目前進度 (panel)
-    private lateinit var scriptButton: Button   // cycles the active script
+    private lateinit var scriptButton: Button   // opens the script dropdown
+    private lateinit var scriptList: LinearLayout   // self-drawn dropdown list
+    private lateinit var delayPanel: LinearLayout   // in-overlay delay sub-page
     private lateinit var stageValue: TextView   // 起始關卡 value
     private lateinit var runButton: Button
 
@@ -158,7 +159,12 @@ class ControlOverlay(
             background = rounded(cProgBg, 8); setPadding(dp(10), dp(8), dp(10), dp(8))
         }
         scriptButton = makeBtn("腳本：--", cField).apply {
-            setOnClickListener { cycleScript() }
+            setOnClickListener { toggleScriptList() }
+        }
+        scriptList = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = rounded(Color.parseColor("#171A1E"), 9, cLine)
+            visibility = View.GONE
         }
         // 起始關卡 stepper
         val stageRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
@@ -176,17 +182,19 @@ class ControlOverlay(
 
         val delayBtn = makeBtn("延遲設定…（全域）", cField).apply {
             textSize = 12f
-            setOnClickListener {
-                runCatching {
-                    context.startActivity(
-                        Intent(context, DelaySettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                    )
-                }
-            }
+            setOnClickListener { toggleDelayPanel() }
+        }
+        delayPanel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            background = rounded(Color.parseColor("#171A1E"), 9, cLine)
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            visibility = View.GONE
         }
         runButton = makeBtn("開始", cGood).apply {
             textSize = 15f; setTypeface(typeface, Typeface.BOLD)
-            setOnClickListener { if (running) onStop() else onStart() }
+            setOnClickListener {
+                if (running) onStop() else { onStart(); setExpanded(false) }  // 開始後自動收合
+            }
         }
         // debug tools
         val tools = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
@@ -199,7 +207,11 @@ class ControlOverlay(
         fun add(v: View, topMargin: Int = dp(9)) =
             p.addView(v, LinearLayout.LayoutParams(w, LinearLayout.LayoutParams.WRAP_CONTENT).apply { this.topMargin = topMargin })
         p.addView(header, LinearLayout.LayoutParams(w, LinearLayout.LayoutParams.WRAP_CONTENT))
-        add(statusText); add(progressText); add(scriptButton); add(stageRow); add(delayBtn); add(runButton); add(tools)
+        add(statusText); add(progressText)
+        add(scriptButton); add(scriptList, dp(4))
+        add(stageRow)
+        add(delayBtn); add(delayPanel, dp(4))
+        add(runButton); add(tools)
         return p
     }
 
@@ -216,19 +228,106 @@ class ControlOverlay(
     // ---- actions ----
     private fun setExpanded(expanded: Boolean) {
         if (root == null) return
-        if (expanded) { refreshScriptButton(); stageValue.text = RunPrefs.startStage(context).toString() }
+        if (expanded) {
+            refreshScriptButton()
+            stageValue.text = RunPrefs.startStage(context).toString()
+            scriptList.visibility = View.GONE
+            delayPanel.visibility = View.GONE
+        }
         collapsed.visibility = if (expanded) View.GONE else View.VISIBLE
         panel.visibility = if (expanded) View.VISIBLE else View.GONE
     }
 
-    private fun cycleScript() {
+    // ---- 腳本下拉（自繪，避開懸浮窗 Spinner 焦點問題）----
+    private fun toggleScriptList() {
+        if (scriptList.visibility == View.VISIBLE) { scriptList.visibility = View.GONE; return }
+        delayPanel.visibility = View.GONE
+        populateScriptList()
+        scriptList.visibility = View.VISIBLE
+    }
+
+    private fun populateScriptList() {
+        scriptList.removeAllViews()
         val list = ScriptStore.list(context, SeerScript.CATEGORY_SEER_FACTOR)
-        if (list.isEmpty()) { scriptButton.text = "腳本：（無，請先新增）"; return }
         val sel = ScriptStore.selectedId(context)
-        val i = list.indexOfFirst { it.id == sel }.let { if (it < 0) 0 else it }
-        val next = list[(i + 1) % list.size]
-        ScriptStore.setSelected(context, next.id)
-        refreshScriptButton()
+        if (list.isEmpty()) {
+            scriptList.addView(TextView(context).apply {
+                text = "（無腳本，請到周回腳本新增）"; setTextColor(cSub); textSize = 12f
+                setPadding(dp(10), dp(8), dp(10), dp(8))
+            })
+            return
+        }
+        for (s in list) {
+            val row = TextView(context).apply {
+                text = (if (s.id == sel) "● " else "　") + s.displayName
+                setTextColor(cInk); textSize = 13f
+                setPadding(dp(10), dp(9), dp(10), dp(9))
+                setOnClickListener {
+                    ScriptStore.setSelected(context, s.id)
+                    refreshScriptButton()
+                    scriptList.visibility = View.GONE
+                }
+            }
+            scriptList.addView(
+                row,
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT),
+            )
+        }
+    }
+
+    // ---- 延遲懸浮子頁（±100ms，免鍵盤）----
+    private val delayNames = listOf("恢復後", "進戰後", "技能後", "換精靈後", "結算後", "撤退各步")
+
+    private fun currentDelays(): IntArray = intArrayOf(
+        DelayPrefs.afterHeal(context), DelayPrefs.afterEnter(context), DelayPrefs.afterSkill(context),
+        DelayPrefs.afterSwitch(context), DelayPrefs.afterResult(context), DelayPrefs.afterRetreat(context),
+    )
+    private fun saveDelays(v: IntArray) = DelayPrefs.save(context, v[0], v[1], v[2], v[3], v[4], v[5])
+
+    private fun toggleDelayPanel() {
+        if (delayPanel.visibility == View.VISIBLE) { delayPanel.visibility = View.GONE; return }
+        scriptList.visibility = View.GONE
+        populateDelayPanel()
+        delayPanel.visibility = View.VISIBLE
+    }
+
+    private fun populateDelayPanel() {
+        delayPanel.removeAllViews()
+        val values = currentDelays()
+        val valueViews = arrayOfNulls<TextView>(6)
+        for (i in 0 until 6) {
+            val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            val label = TextView(context).apply { text = delayNames[i]; setTextColor(cSub); textSize = 12f }
+            val minus = makeBtn("－", cField)
+            val vv = TextView(context).apply {
+                text = values[i].toString(); setTextColor(cInk); textSize = 13f; gravity = Gravity.CENTER
+                background = rounded(cPanel, 8)
+            }
+            val plus = makeBtn("＋", cField)
+            valueViews[i] = vv
+            minus.setOnClickListener { values[i] = (values[i] - 100).coerceAtLeast(0); vv.text = values[i].toString(); saveDelays(values) }
+            plus.setOnClickListener { values[i] = values[i] + 100; vv.text = values[i].toString(); saveDelays(values) }
+            row.addView(label, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+            row.addView(minus, LinearLayout.LayoutParams(dp(36), dp(32)))
+            row.addView(vv, LinearLayout.LayoutParams(dp(54), dp(32)).apply { leftMargin = dp(3); rightMargin = dp(3) })
+            row.addView(plus, LinearLayout.LayoutParams(dp(36), dp(32)))
+            delayPanel.addView(
+                row,
+                LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = if (i == 0) 0 else dp(6) },
+            )
+        }
+        val bottom = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
+        val reset = makeBtn("還原 500", cField).apply {
+            textSize = 12f
+            setOnClickListener {
+                for (i in 0 until 6) { values[i] = DelayPrefs.DEFAULT_MS; valueViews[i]?.text = values[i].toString() }
+                saveDelays(values)
+            }
+        }
+        val back = makeBtn("返回", cField).apply { textSize = 12f; setOnClickListener { delayPanel.visibility = View.GONE } }
+        bottom.addView(reset, LinearLayout.LayoutParams(0, dp(34), 1f).apply { rightMargin = dp(4) })
+        bottom.addView(back, LinearLayout.LayoutParams(0, dp(34), 1f).apply { leftMargin = dp(4) })
+        delayPanel.addView(bottom, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(8) })
     }
 
     private fun refreshScriptButton() {
