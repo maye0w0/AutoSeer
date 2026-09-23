@@ -25,13 +25,13 @@ import org.opencv.imgproc.Imgproc
 object CardDetector {
 
     // Portrait (art-only) filters, as fractions of the frame — from the samples.
-    private const val MIN_H_FRAC = 0.24   // portrait height ≥ 24% of screen height
-    private const val MAX_H_FRAC = 0.48
-    private const val MIN_ASPECT = 0.52   // portrait w/h (175/248 ≈ 0.71)
-    private const val MAX_ASPECT = 0.95
+    private const val MIN_H_FRAC = 0.24f  // portrait height ≥ 24% of screen height
+    private const val MAX_H_FRAC = 0.48f
+    private const val MIN_ASPECT = 0.52f  // portrait w/h (175/248 ≈ 0.71)
+    private const val MAX_ASPECT = 0.95f
     // Extend the portrait box down to include the name plate (≈ 49/248).
-    private const val NAME_EXTEND = 0.20
-    private const val IOU_DEDUP = 0.55    // drop near-duplicate boxes
+    private const val NAME_EXTEND = 0.20f
+    private const val IOU_DEDUP = 0.55f   // drop near-duplicate boxes
     private const val MAX_CARDS = 20
 
     fun detect(bmp: Bitmap): List<RectF> {
