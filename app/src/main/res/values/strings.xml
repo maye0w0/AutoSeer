@@ -42,6 +42,7 @@
     <string name="opt_retries">每關撤退重試上限（0＝無限）</string>
     <string name="opt_default_slot">預設技能格 (1–5)</string>
     <string name="opt_heal">戰前按「精靈恢復」</string>
+    <string name="opt_lobby_on_exhaust">失敗達重試上限後回到大廳（關閉＝待在原地）</string>
     <string name="opt_advance">沿關卡地圖推進</string>
     <string name="btn_save">儲存設定</string>
     <string name="saved">已儲存設定</string>

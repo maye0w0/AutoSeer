@@ -152,7 +152,10 @@ class AutoSeerService : Service() {
         overlay?.setStatus("腳本「${script.displayName}」 ${BattlePlanParser.describe(parsed.plan)}")
         runner.start { api ->
             if (script.category == SeerScript.CATEGORY_SEER_FACTOR) {
-                SeerFactorScript(api, templates, parsed.plan, delays)
+                SeerFactorScript(
+                    api, templates, parsed.plan, delays,
+                    backToLobbyOnExhaust = RunPrefs.backToLobbyOnRetryExhausted(this),
+                )
             } else {
                 BattleScript(api, templates, parsed.plan, delays)
             }

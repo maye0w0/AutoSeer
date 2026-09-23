@@ -33,6 +33,7 @@ class SettingsActivity : AppCompatActivity() {
         binding.editStartStage.setText(RunPrefs.startStage(this).toString())
         binding.editDefaultSlot.setText(RunPrefs.defaultSlot(this).toString())
         binding.healSwitch.isChecked = RunPrefs.healBeforeBattle(this)
+        binding.lobbyOnExhaustSwitch.isChecked = RunPrefs.backToLobbyOnRetryExhausted(this)
     }
 
     private fun save() {
@@ -41,6 +42,7 @@ class SettingsActivity : AppCompatActivity() {
             startStage = binding.editStartStage.text.toString().toIntOrNull() ?: 1,
             defaultSlot = binding.editDefaultSlot.text.toString().toIntOrNull() ?: 2,
             healBeforeBattle = binding.healSwitch.isChecked,
+            backToLobbyOnRetryExhausted = binding.lobbyOnExhaustSwitch.isChecked,
         )
         Toast.makeText(this, R.string.saved, Toast.LENGTH_SHORT).show()
     }

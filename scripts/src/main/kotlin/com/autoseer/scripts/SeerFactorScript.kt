@@ -24,6 +24,8 @@ class SeerFactorScript(
     private val templates: Templates,
     private val plan: BattlePlan = BattlePlan.default(),
     private val delays: BattleDelays = BattleDelays.default(),
+    /** 失敗達每關重試上限後：true=回大廳再停；false(預設)=原地停。 */
+    private val backToLobbyOnExhaust: Boolean = false,
 ) : Script(api) {
 
     override val name = "精靈因子掃蕩 (SeerFactorScript)"
@@ -58,16 +60,20 @@ class SeerFactorScript(
                 api.click(SeerLayout.VICTORY_CONTINUE); api.sleep(delays.afterResultTap); unknown = 0; continue
             }
 
-            // 前置：等「開啟挑戰」(勝利後) 或「繼續挑戰」(失敗後) 出現再點——關卡頁
-            // 會有切換動畫，必須等它出現，否則點空、精靈恢復不出現、重打卡住 (A1-2)。
-            val entry = m.waitAppearAny(
-                listOf(SeerTemplates.OPEN_CHALLENGE, SeerTemplates.CONTINUE_CHALLENGE), WAIT_UI_MS,
-            )
-            if (entry != null) {
-                api.refreshScreen(); m.tapIfPresent(entry); api.sleep(delays.afterResultTap)
-            } else {
-                if (++unknown >= STUCK_LIMIT) { api.logger.w("等不到開啟/繼續挑戰，停止。"); break }
-                continue
+            // 前置：點「開啟/繼續挑戰」固定位置（兩者同位置，使用者已確認）直到「精靈恢復」
+            // 出現＝關卡資訊卡已展開。改「固定點＋驗證」取代繼續挑戰樣板辨識（實機不穩、
+            // 導致失敗後資訊卡沒展開、重打卡住 A1-2）。
+            if (!m.exists(SeerTemplates.PET_RECOVER)) {
+                val opened = m.tapUntilAppears(SeerTemplates.PET_RECOVER, ENTRY_TRIES) {
+                    api.click(SeerLayout.CONTINUE_CHALLENGE)   // =(1168,622)，開啟/繼續挑戰同位置
+                    api.sleep(delays.afterResultTap)
+                }
+                if (!opened) {
+                    api.logger.w("點開啟/繼續挑戰後未見『精靈恢復』（關卡資訊卡未展開）")
+                    if (++unknown >= STUCK_LIMIT) { api.logger.w("連續無法展開關卡資訊卡，停止。"); break }
+                    continue
+                }
+                api.logger.i("關卡資訊卡已展開（偵測到精靈恢復）")
             }
 
             // 精靈恢復模塊
@@ -139,8 +145,13 @@ class SeerFactorScript(
         dismissResultScreen()
         val limit = plan.maxRetriesPerStage
         if (limit > 0 && retriesThisStage > limit) {
-            api.logger.w("第 ${plan.stageIndexFor(battlesDone) + 1} 關連續 $reason 超過重試上限（$limit）→ 回大廳並停止。")
-            backToLobby()
+            val stageNo = plan.stageIndexFor(battlesDone) + 1
+            if (backToLobbyOnExhaust) {
+                api.logger.w("第 $stageNo 關連續 $reason 超過重試上限（$limit）→ 回大廳並停止。")
+                backToLobby()
+            } else {
+                api.logger.w("第 $stageNo 關連續 $reason 超過重試上限（$limit）→ 原地停止（不回大廳）。")
+            }
             stop = true
         } else {
             api.logger.i("$reason → 準備重打同一關（第 ${retriesThisStage} 次重試）")
@@ -187,5 +198,6 @@ class SeerFactorScript(
         private const val STUCK_LIMIT = 40
         private const val SAFETY_CAP = 200        // 防呆：正常會由「達到上限」先結束
         private const val DISMISS_TRIES = 5       // 結算畫面點繼續的重試次數
+        private const val ENTRY_TRIES = 5         // 點開啟/繼續挑戰、等資訊卡展開的重試次數
     }
 }

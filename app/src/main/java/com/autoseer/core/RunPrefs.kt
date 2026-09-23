@@ -13,6 +13,7 @@ object RunPrefs {
     private const val KEY_START_STAGE = "start_stage"
     private const val KEY_DEFAULT_SLOT = "default_slot"
     private const val KEY_HEAL = "heal_before_battle"
+    private const val KEY_LOBBY_ON_EXHAUST = "lobby_on_retry_exhausted"
 
     private fun prefs(ctx: Context) =
         ctx.applicationContext.getSharedPreferences(FILE, Context.MODE_PRIVATE)
@@ -22,11 +23,22 @@ object RunPrefs {
     fun defaultSlot(ctx: Context): Int = prefs(ctx).getInt(KEY_DEFAULT_SLOT, 2)
     fun healBeforeBattle(ctx: Context): Boolean = prefs(ctx).getBoolean(KEY_HEAL, true)
 
-    fun save(ctx: Context, startStage: Int, defaultSlot: Int, healBeforeBattle: Boolean) {
+    /** 失敗達每關重試上限後是否回大廳。預設 false＝待在原本的地方（原地停）。 */
+    fun backToLobbyOnRetryExhausted(ctx: Context): Boolean =
+        prefs(ctx).getBoolean(KEY_LOBBY_ON_EXHAUST, false)
+
+    fun save(
+        ctx: Context,
+        startStage: Int,
+        defaultSlot: Int,
+        healBeforeBattle: Boolean,
+        backToLobbyOnRetryExhausted: Boolean,
+    ) {
         prefs(ctx).edit()
             .putInt(KEY_START_STAGE, startStage.coerceAtLeast(1))
             .putInt(KEY_DEFAULT_SLOT, defaultSlot.coerceIn(1, 5))
             .putBoolean(KEY_HEAL, healBeforeBattle)
+            .putBoolean(KEY_LOBBY_ON_EXHAUST, backToLobbyOnRetryExhausted)
             .apply()
     }
 }
