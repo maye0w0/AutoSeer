@@ -30,13 +30,13 @@ class SeerFactorScript(
 
     override val name = "精靈因子掃蕩 (SeerFactorScript)"
 
-    var battlesDone = 0
-        private set
-
     private val m = SeerModules(api, templates)
     private val runner = BattleTurnRunner(api, templates, delays)
+    private val progress = SweepProgress(plan, backToLobbyOnExhaust)
 
-    private var retriesThisStage = 0
+    /** Stages cleared so far (for logs / UI). */
+    val battlesDone: Int get() = progress.battlesDone
+
     private var stop = false
 
     override fun run() {
@@ -116,9 +116,9 @@ class SeerFactorScript(
 
     /** 打當前這一關並依勝/敗分流。 */
     private fun fightThisStage() {
-        val stageIdx = plan.stageIndexFor(battlesDone)
+        val stageIdx = progress.currentStageIndex()
         val stage = plan.forStage(stageIdx)
-        val label = "（第 ${stageIdx + 1} 關｜已清 $battlesDone｜重試 $retriesThisStage）"
+        val label = "（第 ${stageIdx + 1} 關｜已清 ${progress.battlesDone}｜重試 ${progress.retriesThisStage}）"
         when (runner.fight(stage.steps, plan.defaultCode, label)) {
             BattleTurnRunner.Result.WIN -> onWin()
             BattleTurnRunner.Result.LOSE -> onLose("失敗")
@@ -131,30 +131,28 @@ class SeerFactorScript(
         }
     }
 
-    /** 勝利：點繼續 → 累加 → 下一關（重試計數歸零）。 */
+    /** 勝利：累加 → 點繼續 → 下一關（記帳交給 [SweepProgress]）。 */
     private fun onWin() {
-        battlesDone++
-        retriesThisStage = 0
-        api.logger.i("勝利！已清 $battlesDone 關 → 點擊繼續，進入下一關")
+        progress.onWin()
+        api.logger.i("勝利！已清 ${progress.battlesDone} 關 → 點擊繼續，進入下一關")
         dismissResultScreen()
     }
 
-    /** 失敗/撤退：點繼續 → 重打同一關；連續失敗超過每關重試上限則回大廳並停。 */
+    /** 失敗/撤退：點繼續 → 依 [SweepProgress] 決定重打同關或停止（原地/回大廳）。 */
     private fun onLose(reason: String) {
-        retriesThisStage++
         dismissResultScreen()
-        val limit = plan.maxRetriesPerStage
-        if (limit > 0 && retriesThisStage > limit) {
-            val stageNo = plan.stageIndexFor(battlesDone) + 1
-            if (backToLobbyOnExhaust) {
-                api.logger.w("第 $stageNo 關連續 $reason 超過重試上限（$limit）→ 回大廳並停止。")
-                backToLobby()
-            } else {
-                api.logger.w("第 $stageNo 關連續 $reason 超過重試上限（$limit）→ 原地停止（不回大廳）。")
+        val stageNo = progress.currentStageIndex() + 1
+        when (progress.onLose()) {
+            SweepProgress.LoseAction.RETRY ->
+                api.logger.i("$reason → 準備重打第 $stageNo 關（第 ${progress.retriesThisStage} 次重試）")
+            SweepProgress.LoseAction.STOP_TO_LOBBY -> {
+                api.logger.w("第 $stageNo 關連續 $reason 超過重試上限 → 回大廳並停止。")
+                backToLobby(); stop = true
             }
-            stop = true
-        } else {
-            api.logger.i("$reason → 準備重打同一關（第 ${retriesThisStage} 次重試）")
+            SweepProgress.LoseAction.STOP_HERE -> {
+                api.logger.w("第 $stageNo 關連續 $reason 超過重試上限 → 原地停止（不回大廳）。")
+                stop = true
+            }
         }
     }
 
