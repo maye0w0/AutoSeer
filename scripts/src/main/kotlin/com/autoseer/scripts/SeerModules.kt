@@ -58,6 +58,31 @@ class SeerModules(
     }
 
     /**
+     * Run [tap], then wait for [expectId] to appear; repeat up to [tries] times.
+     * Returns true once it appears. Use this when a single tap sometimes doesn't
+     * "take" (the game ignores taps until a dialog fully settles) — verify the
+     * next state actually arrived instead of blindly moving on.
+     */
+    fun tapUntilAppears(expectId: String, tries: Int, tap: () -> Unit): Boolean {
+        repeat(tries) {
+            tap()
+            if (waitAppear(expectId, STEP_WAIT_MS)) return true
+        }
+        return exists(expectId)
+    }
+
+    /** Tap [point] until [goneId] is no longer on screen (result-screen dismiss). */
+    fun tapPointUntilGone(goneId: String, point: Location, tries: Int, betweenMs: Long): Boolean {
+        repeat(tries) {
+            api.click(point)
+            api.sleep(betweenMs)
+            api.refreshScreen()
+            if (!exists(goneId)) return true
+        }
+        return !exists(goneId)
+    }
+
+    /**
      * 「撤退」通用判斷 (PPT s14–18): 撤退 → 等「你確定要撤退嗎」→ 確認 → 等「恭喜你，
      * 成功撤退」→ 確認. Template-gated (fixed 確認 coords from [SeerLayout]) instead
      * of the old blind paced-tap loop, so it stops the moment each dialog is seen.
@@ -66,23 +91,27 @@ class SeerModules(
      */
     fun retreat(delays: BattleDelays): Boolean {
         api.logger.i("嘗試撤退…")
-        repeat(RETREAT_ATTEMPTS) {
-            api.refreshScreen()
-            if (exists(SeerTemplates.PET_DEFEATED)) deployAnyPet(delays)
-            api.click(SeerLayout.RETREAT.center)                 // 撤退 (code 9)
-            api.sleep(delays.afterRetreatTap)
-            if (waitAppear(SeerTemplates.RETREAT_TIP, RETREAT_WAIT_MS)) {
-                api.click(SeerLayout.RETREAT_CONFIRM)            // 你確定要撤退嗎 → 確認
-                api.sleep(delays.afterRetreatTap)
-                if (waitAppear(SeerTemplates.RETREAT_SUCCESS, RETREAT_WAIT_MS)) {
-                    api.click(SeerLayout.RETREAT_SUCCESS_CONFIRM) // 恭喜你，成功撤退 → 確認
-                    api.sleep(delays.afterRetreatTap)
-                }
-                return true
+        api.refreshScreen()
+        if (exists(SeerTemplates.PET_DEFEATED)) deployAnyPet(delays)
+
+        // s14 → s15：點「撤退」直到「你確定要撤退嗎」出現（反灰時上一步已補精靈）。
+        if (!tapUntilAppears(SeerTemplates.RETREAT_TIP, RETREAT_ATTEMPTS) {
+                api.click(SeerLayout.RETREAT.center); api.sleep(delays.afterRetreatTap)
             }
-        }
-        api.logger.w("撤退未成功（撤退視窗未出現）")
-        return false
+        ) { api.logger.w("撤退鈕無效：撤退視窗未出現"); return false }
+
+        // s16 → s17：點「確認」直到「恭喜你，成功撤退」出現（確認偶爾無效時重點）。
+        if (!tapUntilAppears(SeerTemplates.RETREAT_SUCCESS, RETREAT_ATTEMPTS) {
+                api.click(SeerLayout.RETREAT_CONFIRM); api.sleep(delays.afterRetreatTap)
+            }
+        ) { api.logger.w("撤退確認無效：成功撤退視窗未出現"); return false }
+
+        // s18 → 結算：點「確認」直到「點擊任意位置繼續」出現（沒到結算就重點）。
+        if (!tapUntilAppears(SeerTemplates.TAP_CONTINUE, RETREAT_ATTEMPTS) {
+                api.click(SeerLayout.RETREAT_SUCCESS_CONFIRM); api.sleep(delays.afterRetreatTap)
+            }
+        ) { api.logger.w("撤退成功確認後未見結算畫面（交由結算流程續處理）") }
+        return true
     }
 
     /** Deploy an alive pet to un-grey 撤退 / unstick, when the field pet is 已戰敗. */
@@ -99,7 +128,7 @@ class SeerModules(
     }
 
     companion object {
-        private const val RETREAT_ATTEMPTS = 3
-        private const val RETREAT_WAIT_MS = 6_000L
+        private const val RETREAT_ATTEMPTS = 4    // 每步「點擊→驗證」重試次數
+        private const val STEP_WAIT_MS = 2_500L   // 每次點擊後等下一狀態出現的時間
     }
 }

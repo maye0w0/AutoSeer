@@ -58,9 +58,16 @@ class SeerFactorScript(
                 api.click(SeerLayout.VICTORY_CONTINUE); api.sleep(delays.afterResultTap); unknown = 0; continue
             }
 
-            // 前置：開啟挑戰（勝利後）或繼續挑戰（失敗後）——兩者擇一。
-            if (!m.tapIfPresent(SeerTemplates.OPEN_CHALLENGE)) {
-                m.tapIfPresent(SeerTemplates.CONTINUE_CHALLENGE)
+            // 前置：等「開啟挑戰」(勝利後) 或「繼續挑戰」(失敗後) 出現再點——關卡頁
+            // 會有切換動畫，必須等它出現，否則點空、精靈恢復不出現、重打卡住 (A1-2)。
+            val entry = m.waitAppearAny(
+                listOf(SeerTemplates.OPEN_CHALLENGE, SeerTemplates.CONTINUE_CHALLENGE), WAIT_UI_MS,
+            )
+            if (entry != null) {
+                api.refreshScreen(); m.tapIfPresent(entry); api.sleep(delays.afterResultTap)
+            } else {
+                if (++unknown >= STUCK_LIMIT) { api.logger.w("等不到開啟/繼續挑戰，停止。"); break }
+                continue
             }
 
             // 精靈恢復模塊
@@ -140,11 +147,17 @@ class SeerFactorScript(
         }
     }
 
-    /** 戰鬥結束畫面：等「點擊任意位置繼續」出現，點空白區繼續 → 回關卡頁。 */
+    /**
+     * 戰鬥結束畫面：先等「點擊任意位置繼續」字樣出現（在那之前點擊無效），再點空白
+     * 區「直到該字樣消失」為止——確保真的離開結算畫面 (抱怨2)。
+     */
     private fun dismissResultScreen() {
-        m.waitAppear(SeerTemplates.TAP_CONTINUE, WAIT_UI_MS)
-        api.click(SeerLayout.VICTORY_CONTINUE)
-        api.sleep(delays.afterResultTap)
+        if (!m.waitAppear(SeerTemplates.TAP_CONTINUE, WAIT_UI_MS)) {
+            api.logger.w("未見『點擊任意位置繼續』字樣，仍嘗試點擊繼續")
+        }
+        m.tapPointUntilGone(
+            SeerTemplates.TAP_CONTINUE, SeerLayout.VICTORY_CONTINUE, DISMISS_TRIES, delays.afterResultTap,
+        )
     }
 
     /** 達到每天操作上限 → 確認 → 回大廳。 */
@@ -173,5 +186,6 @@ class SeerFactorScript(
         private const val WAIT_TURN_MS = 90_000L  // 等你的回合（先制/長開場）
         private const val STUCK_LIMIT = 40
         private const val SAFETY_CAP = 200        // 防呆：正常會由「達到上限」先結束
+        private const val DISMISS_TRIES = 5       // 結算畫面點繼續的重試次數
     }
 }
