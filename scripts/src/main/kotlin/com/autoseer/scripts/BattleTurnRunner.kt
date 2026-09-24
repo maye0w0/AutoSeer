@@ -125,12 +125,12 @@ class BattleTurnRunner(
      * [alreadyOpen] = the 換精靈 sub-screen is already up (a pet just died) vs. we
      * must open it via the 精靈 button first (主動切換 while the pet is alive).
      *
-     * Verification is the point. The old code tapped a fixed slot and moved on, so
-     * a mis-tap / failed drag left PET_DEFEATED up → the loop re-entered
-     * onPetDefeated → stepIndex ran onto a cast → deployAnyPet blind-tapped the
-     * 精靈1 slot, which overlaps the 招牌技 圓鈕. Here we remember the target card's
-     * head, drag it out, then require the on-field head to match; on failure we
-     * retry the SAME target rather than fall through to a blind tap.
+     * Verification ([verifyDeployed]) is by "did we leave the 換精靈 介面", not by
+     * head-similarity. The old code tapped a fixed slot and moved on, so a failed
+     * drag left PET_DEFEATED up → the loop re-entered onPetDefeated → stepIndex ran
+     * onto a cast → deployAnyPet blind-tapped the 精靈1 slot, which overlaps the
+     * 招牌技 圓鈕. Here, a failed switch (still in the 換精靈 介面) retries the SAME
+     * target instead of falling through to that blind tap.
      */
     private fun deployPet(target: Int?, alreadyOpen: Boolean): Boolean {
         val slots: List<Int> = when (target) {
@@ -140,10 +140,12 @@ class BattleTurnRunner(
         if (slots.isEmpty()) return false
         val attemptsPerSlot = if (target != null) SWITCH_ATTEMPTS else 1
         for (slotIndex in slots) {
-            repeat(attemptsPerSlot) { attempt ->
-                // Ensure the 換精靈 sub-screen is open: 主動切換 always opens it; after a
-                // failed try we re-open before retrying.
-                if (!alreadyOpen || attempt > 0) {
+            repeat(attemptsPerSlot) {
+                // Open the 換精靈 sub-screen only for 主動切換 (pet still alive). On 陣亡補位
+                // the game already popped it up; tapping 精靈 again would mis-hit / toggle
+                // it (seen on device: a re-tap opened a skill popup), so a retry there just
+                // re-taps the card.
+                if (!alreadyOpen) {
                     api.click(SeerLayout.PET.center); api.sleep(delays.afterSwitch); api.refreshScreen()
                 }
                 api.logger.i("換精靈 ${slotIndex + 1}${if (target == null) "（補位）" else ""}")
@@ -164,19 +166,27 @@ class BattleTurnRunner(
     }
 
     /**
-     * Did a pet actually take the field? Minimum evidence: we've left the 換精靈
-     * 介面 (PET_DEFEATED gone). If the target card's head was captured, also require
-     * the on-field head to match it (so a mis-tap onto the wrong / greyed card is
-     * caught). No head crop (region unset) → trust the PET_DEFEATED check alone.
+     * Did the switch complete? The reliable signal is leaving the 換精靈 介面: once a
+     * pet is on the field, PET_DEFEATED is gone — and 主動切換 (alive pet) never shows
+     * PET_DEFEATED at all, so it counts as done immediately. We deliberately do NOT
+     * fail on a low head-similarity: on device the FIELD_HEAD / petCardHead coords
+     * aren't calibrated yet, so a low score means "coords unset", not "switch
+     * failed" — treating it as failure (the previous behavior) made every switch
+     * mis-fire into a retry that mis-tapped a skill popup, then 放棄→撤退. The
+     * similarity is logged for diagnosis only; once the coords are calibrated it can
+     * be promoted back into the pass/fail decision.
      */
     private fun verifyDeployed(cardHead: IPattern?): Boolean {
-        if (exists(SeerTemplates.PET_DEFEATED)) return false
-        if (cardHead == null) return true
-        val field = runCatching { api.cropScreen(SeerLayout.FIELD_HEAD) }.getOrNull() ?: return true
-        val sim = api.similarity(cardHead, field)
-        field.close()
-        api.logger.i("換精靈驗證 similarity=${"%.2f".format(sim)}")
-        return sim >= HEAD_MATCH_THRESHOLD
+        val stillSwitching = exists(SeerTemplates.PET_DEFEATED)
+        if (cardHead != null) {
+            runCatching { api.cropScreen(SeerLayout.FIELD_HEAD) }.getOrNull()?.let { field ->
+                val sim = api.similarity(cardHead, field)
+                field.close()
+                val mark = if (sim >= HEAD_MATCH_THRESHOLD) "≥門檻" else "<門檻(座標未校準?)"
+                api.logger.i("換精靈頭像 similarity=${"%.2f".format(sim)} $mark（診斷；成敗以是否離開換精靈介面為準）")
+            }
+        }
+        return !stillSwitching
     }
 
     private fun exists(id: String): Boolean = templates.has(id) && api.exists(templates.get(id))
@@ -186,8 +196,9 @@ class BattleTurnRunner(
         private const val TURN_SETTLE_MS = 12_000L
         private const val OUTCOME_POLLS = 6   // ~1.8s to read the win/lose diamond
         private const val SWITCH_ATTEMPTS = 3 // 換人「點卡→驗證」重試次數（同一目標）
-        // 場上頭像 vs 換精靈卡頭像 的相似度門檻。0.55 出自影片壓縮幀實測（正確 0.78 /
-        // 已戰敗卡 0.51），偏寬鬆以免誤判失敗；**須以實機截圖校準**。
+        // 頭像相似度門檻，目前僅供 verifyDeployed 的診斷 log 標記，**不主導換人成敗**
+        // （實機 FIELD_HEAD/petCardHead 座標未校準時 similarity 偏低，若用來判失敗會誤判
+        // →重試誤觸）。0.55 出自影片壓縮幀；實機校準座標後可重啟嚴格驗證。
         private const val HEAD_MATCH_THRESHOLD = 0.55
     }
 }
