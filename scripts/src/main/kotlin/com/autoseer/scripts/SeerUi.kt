@@ -87,12 +87,12 @@ object SeerLayout {
     // 的 center 系統性偏右 50~100px，點在名字/間隔上而非頭像 → 換人只有 30~40% 成功。
     // 仍屬影片目測，若某卡實機仍點偏，微調該列 x 即可。
     val PET_REGIONS = listOf(
-        Region(4, 580, 64, 64),    // 精靈1（頭像中心 ≈36,612）
-        Region(168, 580, 64, 64),  // 精靈2（≈200,612）
-        Region(364, 580, 64, 64),  // 精靈3（≈396,612）
-        Region(516, 580, 64, 64),  // 精靈4（≈548,612）
-        Region(716, 580, 64, 64),  // 精靈5（≈748,612）
-        Region(908, 580, 64, 64),  // 精靈6（≈940,612）
+        Region(18, 588, 64, 64),   // 精靈1（頭像中心 ≈50,620）
+        Region(182, 588, 64, 64),  // 精靈2（≈214,620）
+        Region(376, 588, 64, 64),  // 精靈3（≈408,620）
+        Region(532, 588, 64, 64),  // 精靈4（≈564,620）
+        Region(732, 588, 64, 64),  // 精靈5（≈764,620）
+        Region(924, 588, 64, 64),  // 精靈6（≈956,620）
     )
     val PET_SLOTS: List<Location> = PET_REGIONS.map { it.center }
     val PET_COUNT = PET_SLOTS.size
@@ -106,7 +106,7 @@ object SeerLayout {
      * 場上「當前上場精靈」頭像區域（畫面左上角，正規化 1280x720）。換人後裁此處，與換人
      * 前記下的目標卡頭像比對（診斷 log；未來校準門檻後可重啟嚴格驗證）。校準自實機影片幀。
      */
-    val FIELD_HEAD = Region(8, 8, 68, 64)
+    val FIELD_HEAD = Region(12, 12, 104, 96)
 
     /** 換精靈子畫面第 [n] 張卡(1..6)的頭像區＝ [PET_REGIONS]（已是頭像區），供與 [FIELD_HEAD] 比對。 */
     fun petCardHead(n: Int): Region? = PET_REGIONS.getOrNull(n - 1)
