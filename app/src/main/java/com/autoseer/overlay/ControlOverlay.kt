@@ -35,6 +35,7 @@ class ControlOverlay(
     private val onCapture: () -> Unit = {},
     private val onProbe: () -> Unit = {},
     private val onCaptureCards: () -> Unit = {},
+    private val onNavTest: () -> Unit = {},
 ) {
     private val windowManager =
         context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -211,6 +212,11 @@ class ControlOverlay(
         tools.addView(probe, LinearLayout.LayoutParams(0, dp(38), 1f).apply { leftMargin = dp(3); rightMargin = dp(3) })
         tools.addView(cards, LinearLayout.LayoutParams(0, dp(38), 1f).apply { leftMargin = dp(3) })
 
+        // 純導航測試（不打戰鬥）：測「進入→退出→下一個因子＋捲動尋找」的銜接流程。
+        val navTestBtn = makeBtn("測因子導航（不打戰鬥）", cField).apply {
+            textSize = 12f; setOnClickListener { onNavTest() }
+        }
+
         val w = dp(250)
         fun add(v: View, topMargin: Int = dp(9)) =
             p.addView(v, LinearLayout.LayoutParams(w, LinearLayout.LayoutParams.WRAP_CONTENT).apply { this.topMargin = topMargin })
@@ -219,7 +225,7 @@ class ControlOverlay(
         add(scriptButton)
         add(stageRow)
         add(delayBtn)
-        add(runButton); add(tools)
+        add(runButton); add(tools); add(navTestBtn, dp(6))
         return p
     }
 

@@ -31,6 +31,7 @@ import com.autoseer.runner.ScriptRunner
 import com.autoseer.core.FactorLibrary
 import com.autoseer.scripts.BattleScript
 import com.autoseer.scripts.BattlePlanParser
+import com.autoseer.scripts.FactorNavTestScript
 import com.autoseer.scripts.FactorNavigator
 import com.autoseer.scripts.FactorSweepProgress
 import com.autoseer.scripts.FactorSweepRunner
@@ -113,6 +114,7 @@ class AutoSeerService : Service() {
             onCapture = { captureFrame() },
             onProbe = { probeDetection() },
             onCaptureCards = { captureCardsForReview() },
+            onNavTest = { navTest() },
         )
         this.overlay = overlay
         val logger = AndroidLogger(onLine = { line -> overlay.setStatus(line) })
@@ -229,6 +231,29 @@ class AutoSeerService : Service() {
                 overlay?.setStatus("擷取卡失敗：${e.message}")
             }
         }.start()
+    }
+
+    /**
+     * 因子導航測試（不打戰鬥）：只跑「選擇→進入→退出→下一個因子（含捲動尋找）」的銜接
+     * 流程，用來單獨驗證導航，不呼叫戰鬥模組。目標＝精靈圖庫內所有因子卡。
+     */
+    private fun navTest() {
+        val runner = runner ?: return
+        if (!GestureAccessibilityService.isConnected) {
+            overlay?.setStatus("⚠ 無障礙服務未連線，無法點擊。請先到設定開啟")
+            return
+        }
+        val targets = FactorLibrary.load(this)
+        if (targets.isEmpty()) {
+            overlay?.setStatus("⚠ 圖庫沒有因子卡，請先用『擷取卡』存幾張再測")
+            return
+        }
+        val templates = DeviceTemplates(this)
+        val delays = DelayPrefs.toBattleDelays(this)
+        overlay?.setStatus("因子導航測試：${targets.size} 個因子（不打戰鬥，按停止結束）")
+        runner.start { api ->
+            FactorNavTestScript(api, templates, delays, targets) { v -> overlay?.setChromeVisible(v) }
+        }
     }
 
     /** Run the detection probe: report each template's match score without tapping anything. */
