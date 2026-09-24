@@ -7,6 +7,7 @@ import android.media.projection.MediaProjectionManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.DocumentsContract
 import android.provider.Settings
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -78,7 +79,7 @@ class MainActivity : AppCompatActivity() {
             )
         }
 
-        binding.btnPetFolder.setOnClickListener { petFolderLauncher.launch(null) }
+        binding.btnPetFolder.setOnClickListener { petFolderLauncher.launch(storageRootInitialUri()) }
 
         binding.btnStart.setOnClickListener { ensureNotificationThenCapture() }
         binding.btnStop.setOnClickListener { startService(AutoSeerService.stopIntent(this)) }
@@ -117,4 +118,14 @@ class MainActivity : AppCompatActivity() {
         val mpm = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         projectionLauncher.launch(mpm.createScreenCaptureIntent())
     }
+
+    /**
+     * Initial folder for the 精靈圖庫 picker: the device's primary storage root, so
+     * the user lands where "auto seer" sits next to DCIM/Download/… and can pick or
+     * create it. SAF still requires the user to grant the folder once — it cannot be
+     * granted or created silently (the root itself is blocked for privacy).
+     */
+    private fun storageRootInitialUri(): Uri? = runCatching {
+        DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:")
+    }.getOrNull()
 }

@@ -79,4 +79,26 @@ class SweepProgressTest {
         p.onWin(); assertEquals(4, p.currentStageIndex())
         p.onWin(); assertEquals(0, p.currentStageIndex())  // wrap
     }
+
+    @Test
+    fun factorSwitchRestartsStageCursorButKeepsTotal() {
+        val p = SweepProgress(plan(stages = 5))
+        p.onWin(); p.onWin(); p.onWin()          // cleared 3 → stage index 3
+        assertEquals(3, p.currentStageIndex())
+        assertEquals(3, p.battlesDone)
+        p.onFactorSwitch()                        // 新因子：關卡游標歸零
+        assertEquals(0, p.currentStageIndex())
+        assertEquals(3, p.battlesDone)            // 總數保留
+        p.onWin(); assertEquals(1, p.currentStageIndex())  // 新因子內照常前進
+        assertEquals(4, p.battlesDone)
+    }
+
+    @Test
+    fun factorSwitchResetsPerStageRetries() {
+        val p = SweepProgress(plan(maxRetries = 5))
+        p.onLose(); p.onLose()
+        assertEquals(2, p.retriesThisStage)
+        p.onFactorSwitch()
+        assertEquals(0, p.retriesThisStage)
+    }
 }

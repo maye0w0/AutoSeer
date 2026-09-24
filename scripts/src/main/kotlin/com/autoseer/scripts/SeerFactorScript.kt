@@ -26,6 +26,12 @@ class SeerFactorScript(
     private val delays: BattleDelays = BattleDelays.default(),
     /** 失敗達每關重試上限後：true=回大廳再停；false(預設)=原地停。 */
     private val backToLobbyOnExhaust: Boolean = false,
+    /**
+     * 多因子銜接鉤子（[FactorSweep]）。null=單因子模式（次數用盡即回大廳/停，舊行為）。
+     * 非 null 時：開跑先進第一個指定因子；每次「達到每天操作上限」改為銜接下一個因子，
+     * 全部打完才回大廳。此鉤子只在因子與因子之間取得控制，戰鬥流程完全不經手。
+     */
+    private val sweep: FactorSweep? = null,
     /** 進度回報（stageNo 從 1 起、cleared=已清關數），供懸浮視窗顯示。 */
     private val onProgress: (stageNo: Int, cleared: Int) -> Unit = { _, _ -> },
 ) : Script(api) {
@@ -44,6 +50,11 @@ class SeerFactorScript(
     override fun run() {
         api.logger.i("精靈因子掃蕩開始：每輪關數=${plan.stagesPerLoop}, 起始關=${plan.startStage}")
         emitProgress()
+        // 多因子銜接：先由選擇格導航進第一個指定因子的詳情頁（單因子模式跳過）。
+        if (sweep != null && !sweep.enterFirst()) {
+            api.logger.w("銜接：無法進入第一個指定因子，結束。")
+            return
+        }
         var unknown = 0
         var iterations = 0
         while (!stop) {
@@ -51,7 +62,7 @@ class SeerFactorScript(
             api.refreshScreen()
 
             // 次數用盡：整個掃蕩結束 → 回大廳
-            if (m.exists(SeerTemplates.DAILY_LIMIT)) { onDailyLimit(); break }
+            if (m.exists(SeerTemplates.DAILY_LIMIT)) { if (onDailyLimit()) continue else break }
 
             // 已在戰鬥中（你的回合）？直接打這一關。
             if (m.exists(SeerTemplates.BATTLE_ACTION)) { fightThisStage(); unknown = 0; continue }
@@ -112,12 +123,12 @@ class SeerFactorScript(
 
             // 進入戰鬥後可能直接跳「達到每天操作上限」
             api.refreshScreen()
-            if (m.exists(SeerTemplates.DAILY_LIMIT)) { onDailyLimit(); break }
+            if (m.exists(SeerTemplates.DAILY_LIMIT)) { if (onDailyLimit()) continue else break }
 
             // 等你的回合（Boss 先制可能久等）
             if (!m.waitAppear(SeerTemplates.BATTLE_ACTION, WAIT_TURN_MS)) {
                 api.refreshScreen()
-                if (m.exists(SeerTemplates.DAILY_LIMIT)) { onDailyLimit(); break }
+                if (m.exists(SeerTemplates.DAILY_LIMIT)) { if (onDailyLimit()) continue else break }
                 if (++unknown >= STUCK_LIMIT) { api.logger.w("等不到你的回合，停止。"); break }
                 continue
             }
@@ -186,12 +197,30 @@ class SeerFactorScript(
         )
     }
 
-    /** 達到每天操作上限 → 確認 → 回大廳。 */
-    private fun onDailyLimit() {
-        api.logger.i("偵測到『達到每天操作上限』→ 確認並回大廳")
+    /**
+     * 達到每天操作上限（該因子當天次數用盡）→ 確認彈窗。
+     * 單因子模式(sweep=null)：回大廳並回傳 false（停止，舊行為）。
+     * 多因子模式：銜接下一個指定因子；成功→關卡游標歸零、回傳 true（主迴圈續打新因子）；
+     *             已無下一個或導航失敗→回大廳、回傳 false（停止）。
+     */
+    private fun onDailyLimit(): Boolean {
+        api.logger.i("偵測到『達到每天操作上限』（該因子當天次數用盡）")
         api.click(DAILY_LIMIT_CONFIRM)
         api.sleep(delays.afterResultTap)
+        if (sweep != null) {
+            return if (sweep.advanceToNext()) {
+                progress.onFactorSwitch()
+                emitProgress()
+                api.logger.i("已銜接到下一個指定因子，繼續掃蕩。")
+                true
+            } else {
+                api.logger.i("指定因子已全部打完 → 回大廳並停止。")
+                backToLobby()
+                false
+            }
+        }
         backToLobby()
+        return false
     }
 
     /** 回大廳模塊：快速功能選單 → 小房子 → 等航行指南出現。 */

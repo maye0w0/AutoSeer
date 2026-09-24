@@ -32,6 +32,10 @@ object SeerTemplates {
     const val HOME_BTN = "lobby/home"                    // 小房子（回大廳）
     const val NAV_GUIDE = "lobby/nav_guide"              // 航行指南鈕（已回大廳）
 
+    // 因子關卡「選擇/銜接」導航（與戰鬥模組隔離；樣板自實測影片幀裁出）
+    const val FACTOR_GRID = "factor/grid_marker"     // 在因子卡選擇格（辨識：右上搜尋框）
+    const val FACTOR_DETAIL = "factor/detail_marker" // 在因子詳情頁（辨識：左側「總能力值」字樣）
+
     /** All template ids the automation looks for (used by the detection probe). */
     val ALL = listOf(
         BATTLE_ACTION, RESULT_WIN, RESULT_LOSE, TAP_CONTINUE, ENTER_BATTLE, WAIT_CHALLENGE,
@@ -39,6 +43,7 @@ object SeerTemplates {
         OPEN_CHALLENGE, PET_RECOVER, FIRST_RECOVER_TIP, RECOVER_FULL, RECOVER_CANNOT,
         RETREAT_TIP, RETREAT_SUCCESS, CONTINUE_CHALLENGE,
         DAILY_LIMIT, QUICK_MENU, HOME_BTN, NAV_GUIDE,
+        FACTOR_GRID, FACTOR_DETAIL,
     )
 }
 
@@ -146,4 +151,39 @@ object SeerLayout {
 
     /** The challengeable node icon sits this many px above its 「等待挑戰」 label. */
     const val NODE_ABOVE_LABEL_PX = 52
+
+    // ---- 因子關卡選擇/銜接（正規化 1280x720，量自實測影片 1600x900 幀×0.8）----
+
+    /** 左上「返回」箭頭：三個因子畫面（選擇格/詳情頁/節點頁）共用，實測中心≈(84,22)。 */
+    val FACTOR_EXIT = Location(84, 22)
+
+    /** 選擇格「上排」5 張因子卡的立繪中心 x（欄距≈212）。 */
+    private val FACTOR_CARD_XS = listOf(312, 524, 736, 948, 1160)
+    private const val FACTOR_CARD_TOP = 116   // 上排卡上緣 y
+    private const val FACTOR_CARD_W = 181     // 全卡寬（立繪+名牌）
+    private const val FACTOR_CARD_H = 306     // 全卡高
+    val FACTOR_CARD_COUNT: Int = FACTOR_CARD_XS.size
+
+    /** 點選第 [col] 欄(0-based)因子卡的著點（卡片中央）。越界回 (0,0)。 */
+    fun factorCardSlot(col: Int): Location {
+        val cx = FACTOR_CARD_XS.getOrNull(col) ?: return Location(0, 0)
+        return Location(cx, FACTOR_CARD_TOP + FACTOR_CARD_H / 2)
+    }
+
+    /**
+     * 第 [col] 欄因子卡的「比對裁切區」：比整張卡各邊多留 [FACTOR_CARD_MARGIN] px，
+     * 讓 similarity 在其中滑動、容忍 ±小偏移。超出畫面的部分由 crop 自動夾住。null=欄越界。
+     */
+    fun factorCardMatchRegion(col: Int): Region? {
+        val cx = FACTOR_CARD_XS.getOrNull(col) ?: return null
+        val x = (cx - FACTOR_CARD_W / 2 - FACTOR_CARD_MARGIN).coerceAtLeast(0)
+        val y = (FACTOR_CARD_TOP - FACTOR_CARD_MARGIN).coerceAtLeast(0)
+        return Region(x, y, FACTOR_CARD_W + FACTOR_CARD_MARGIN * 2, FACTOR_CARD_H + FACTOR_CARD_MARGIN * 2)
+    }
+
+    private const val FACTOR_CARD_MARGIN = 12
+
+    /** 選擇格捲動手勢端點（下→上＝看更多因子；上→下＝回頂）。x 取畫面中央以避開卡點選。 */
+    val GRID_SCROLL_BOTTOM = Location(640, 560)
+    val GRID_SCROLL_TOP = Location(640, 200)
 }

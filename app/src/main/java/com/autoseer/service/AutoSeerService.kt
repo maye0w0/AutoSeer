@@ -28,8 +28,12 @@ import com.autoseer.overlay.ControlOverlay
 import com.autoseer.core.ScriptStore
 import com.autoseer.core.SeerScript
 import com.autoseer.runner.ScriptRunner
+import com.autoseer.core.FactorLibrary
 import com.autoseer.scripts.BattleScript
 import com.autoseer.scripts.BattlePlanParser
+import com.autoseer.scripts.FactorNavigator
+import com.autoseer.scripts.FactorSweepProgress
+import com.autoseer.scripts.FactorSweepRunner
 import com.autoseer.scripts.ProbeScript
 import com.autoseer.scripts.SeerFactorScript
 import com.autoseer.ui.CardCaptureActivity
@@ -151,12 +155,25 @@ class AutoSeerService : Service() {
         )
         parsed.warnings.forEach { Log.w(TAG, "計畫解析警告：$it") }
         val delays = DelayPrefs.toBattleDelays(this)
+        // 多因子銜接：讀「精靈圖庫」資料夾內所有因子卡當指定清單（Phase 1：依檔名順序，
+        // 空＝維持單因子舊行為）。此清單只驅動「選擇/進入」導航模組，不碰戰鬥模組。
+        val factorTargets = FactorLibrary.load(this)
         overlay?.setStatus("腳本「${script.displayName}」 ${BattlePlanParser.describe(parsed.plan)}")
         runner.start { api ->
             if (script.category == SeerScript.CATEGORY_SEER_FACTOR) {
+                val sweep = if (factorTargets.isNotEmpty()) {
+                    api.logger.i("銜接模式：圖庫指定 ${factorTargets.size} 個因子（${factorTargets.joinToString("、") { it.name }}）")
+                    overlay?.setStatus("銜接模式：${factorTargets.size} 個指定因子")
+                    FactorSweepRunner(
+                        nav = FactorNavigator(api, templates, delays),
+                        progress = FactorSweepProgress(factorTargets),
+                        logger = api.logger,
+                    )
+                } else null
                 SeerFactorScript(
                     api, templates, parsed.plan, delays,
                     backToLobbyOnExhaust = RunPrefs.backToLobbyOnRetryExhausted(this),
+                    sweep = sweep,
                     onProgress = { stageNo, cleared -> overlay?.setProgress(stageNo, cleared) },
                 )
             } else {

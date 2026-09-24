@@ -21,8 +21,26 @@ class SweepProgress(
     var retriesThisStage = 0
         private set
 
+    /**
+     * [battlesDone] value at which the current factor started, so the per-stage
+     * plan cursor is relative to *this* factor (multi-factor 銜接): switching to a
+     * new factor restarts its stage cycle at 關1 while [battlesDone] keeps counting
+     * the run total. 0 in single-factor mode (never switched) — behaviour unchanged.
+     */
+    private var factorStageBaseline = 0
+
     /** 0-based plan index of the stage to fight now (wraps within a loop, FR-1). */
-    fun currentStageIndex(): Int = plan.stageIndexFor(battlesDone)
+    fun currentStageIndex(): Int = plan.stageIndexFor(battlesDone - factorStageBaseline)
+
+    /**
+     * Moving on to a new factor: restart the per-stage plan cursor from this
+     * factor's first stage, and clear per-stage retries. [battlesDone] (the run
+     * total shown in the UI) is intentionally kept.
+     */
+    fun onFactorSwitch() {
+        factorStageBaseline = battlesDone
+        retriesThisStage = 0
+    }
 
     /** Won the current stage: advance to the next, reset per-stage retries. */
     fun onWin() {
