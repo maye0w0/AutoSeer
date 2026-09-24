@@ -1,6 +1,7 @@
 package com.autoseer.scripts
 
 import com.autoseer.libautomata.AutomataApi
+import com.autoseer.libautomata.Size
 import com.autoseer.libautomata.Templates
 
 /**
@@ -100,12 +101,28 @@ class FactorNavigator(
         for (col in 0 until SeerLayout.FACTOR_CARD_COUNT) {
             val region = SeerLayout.factorCardMatchRegion(col) ?: continue
             api.cropScreen(region).use { crop ->
-                val s = api.similarity(target.pattern, crop)
+                val s = scoreCard(target.pattern, crop, logDims = col == 0, name = target.name)
                 api.logger.i("  因子比對 第${col + 1}欄 score=${(s * 100).toInt()}%")
                 if (s > bestScore) { bestScore = s; bestCol = col }
             }
         }
         return bestCol
+    }
+
+    /**
+     * Score how well the library [tmpl] matches the card in [crop]. The captured
+     * library card can be at a different absolute size/aspect than the on-grid
+     * card cell (擷卡時的框大小不一），which pushes the true match outside a plain
+     * multi-scale sweep and yields a garbage score. So first force the template to
+     * the cell's card geometry (kills that drift), then fine-sweep for alignment.
+     */
+    private fun scoreCard(tmpl: com.autoseer.libautomata.IPattern, crop: com.autoseer.libautomata.IPattern, logDims: Boolean, name: String): Double {
+        val tw = (crop.width * CANON_FRAC).toInt().coerceAtLeast(8)
+        val th = (crop.height * CANON_FRAC).toInt().coerceAtLeast(8)
+        if (logDims) {
+            api.logger.i("因子比對「$name」模板 ${tmpl.width}x${tmpl.height} → 卡格幾何 ${tw}x${th}（卡格 ${crop.width}x${crop.height}）")
+        }
+        return tmpl.resize(Size(tw, th)).use { canon -> api.similarity(canon, crop, FINE_SCALES) }
     }
 
     companion object {
@@ -114,6 +131,8 @@ class FactorNavigator(
         private const val TOP_REWIND = 6         // drags down to reach the list top first
         private const val MARKER_THRESHOLD = 0.70 // screen-id markers (video-derived; loose)
         private const val MATCH_THRESHOLD = 0.60  // card similarity (tune on device)
+        private const val CANON_FRAC = 0.86       // 模板先縮到卡格幾何的比例（卡約佔卡格 0.88w×0.93h）
+        private val FINE_SCALES = listOf(0.80, 0.88, 0.94, 1.0, 1.06, 1.12) // 卡格內細對位
         private const val GRID_SCROLL_MS = 700L   // slow drag ≈ 長按拖曳（無長按原語）
         private const val GRID_SETTLE_MS = 500L
         private const val DETAIL_WAIT_MS = 6_000L
