@@ -26,7 +26,20 @@ class FactorNavigator(
     private val api: AutomataApi,
     private val templates: Templates,
     private val delays: BattleDelays,
+    /**
+     * Hide/show the floating overlay. The overlay window is captured by
+     * MediaProjection, so if the bubble sits over a card it occludes it in the
+     * matching screenshot and that card never matches (實機症狀：氣泡蓋住因子→一直
+     * 捲不到). Scanning hides it, then restores it. Default no-op (e.g. tests).
+     */
+    private val setChromeVisible: (Boolean) -> Unit = {},
 ) {
+    /** Hide the overlay so it can't occlude cards in the scan screenshots. */
+    fun hideChrome() { setChromeVisible(false); api.sleep(CHROME_SETTLE_MS) }
+
+    /** Restore the overlay after scanning. */
+    fun showChrome() { setChromeVisible(true) }
+
     private fun onScreen(id: String): Boolean =
         templates.has(id) && api.exists(templates.get(id), threshold = MARKER_THRESHOLD)
 
@@ -75,7 +88,13 @@ class FactorNavigator(
         maxScrolls: Int = MAX_SCROLLS,
         threshold: Double = MATCH_THRESHOLD,
     ): Boolean {
-        // Deterministic start: rewind to the top of the list first.
+        // 1) 先掃「當前畫面」——目標常就在可見範圍，命中即點，完全免捲動。
+        api.refreshScreen()
+        if (isOnGrid()) {
+            val col = bestColumn(target, threshold)
+            if (col >= 0) return tapColumn(col, target)
+        }
+        // 2) 沒中 → 回到列表頂端，再往下逐排掃描（處理捲在深處的卡）。
         repeat(TOP_REWIND) { scrollUpOneRow() }
         for (attempt in 0..maxScrolls) {
             api.refreshScreen()
@@ -84,14 +103,17 @@ class FactorNavigator(
                 return false
             }
             val col = bestColumn(target, threshold)
-            if (col >= 0) {
-                api.logger.i("因子「${target.name}」命中第 ${col + 1} 欄 → 點選")
-                api.click(SeerLayout.factorCardSlot(col))
-                return api.waitUntil(DETAIL_WAIT_MS, 300) { isOnDetail() || !isOnGrid() }
-            }
+            if (col >= 0) return tapColumn(col, target)
             if (attempt < maxScrolls) scrollDownOneRow()
         }
         return false
+    }
+
+    /** Tap the matched column and confirm we left the grid onto the 詳情頁. */
+    private fun tapColumn(col: Int, target: FactorTarget): Boolean {
+        api.logger.i("因子「${target.name}」命中第 ${col + 1} 欄 → 點選")
+        api.click(SeerLayout.factorCardSlot(col))
+        return api.waitUntil(DETAIL_WAIT_MS, 300) { isOnDetail() || !isOnGrid() }
     }
 
     /** Best-matching top-row column (0-based) for [target] at/above [threshold], or -1. */
@@ -133,6 +155,7 @@ class FactorNavigator(
         private const val MATCH_THRESHOLD = 0.60  // card similarity (tune on device)
         private const val CANON_FRAC = 0.86       // 模板先縮到卡格幾何的比例（卡約佔卡格 0.88w×0.93h）
         private val FINE_SCALES = listOf(0.80, 0.88, 0.94, 1.0, 1.06, 1.12) // 卡格內細對位
+        private const val CHROME_SETTLE_MS = 250L // 隱藏懸浮窗後等合成器把它移出畫面再截圖
         private const val GRID_SCROLL_MS = 700L   // slow drag ≈ 長按拖曳（無長按原語）
         private const val GRID_SETTLE_MS = 500L
         private const val DETAIL_WAIT_MS = 6_000L

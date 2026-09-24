@@ -42,9 +42,15 @@ class FactorSweepRunner(
     }
 
     private fun enter(t: FactorTarget): Boolean {
-        if (!nav.backToGrid()) { logger.w("銜接：回不到因子選擇格"); return false }
-        val ok = nav.findAndTapFactor(t)
-        if (!ok) logger.w("銜接：在選擇格找不到因子「${t.name}」（比對不到或已捲到底）")
-        return ok
+        // 掃描期間隱藏懸浮視窗，避免它被截圖拍到、蓋住因子卡而比對不中。
+        nav.hideChrome()
+        try {
+            if (!nav.backToGrid()) { logger.w("銜接：回不到因子選擇格"); return false }
+            val ok = nav.findAndTapFactor(t)
+            if (!ok) logger.w("銜接：在選擇格找不到因子「${t.name}」（比對不到或已捲到底）")
+            return ok
+        } finally {
+            nav.showChrome()
+        }
     }
 }

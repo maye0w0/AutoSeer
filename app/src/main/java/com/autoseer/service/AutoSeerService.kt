@@ -165,7 +165,7 @@ class AutoSeerService : Service() {
                     api.logger.i("銜接模式：圖庫指定 ${factorTargets.size} 個因子（${factorTargets.joinToString("、") { it.name }}）")
                     overlay?.setStatus("銜接模式：${factorTargets.size} 個指定因子")
                     FactorSweepRunner(
-                        nav = FactorNavigator(api, templates, delays),
+                        nav = FactorNavigator(api, templates, delays) { v -> overlay?.setChromeVisible(v) },
                         progress = FactorSweepProgress(factorTargets),
                         logger = api.logger,
                     )
