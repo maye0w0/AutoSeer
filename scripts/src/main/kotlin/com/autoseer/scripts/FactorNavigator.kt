@@ -2,6 +2,7 @@ package com.autoseer.scripts
 
 import com.autoseer.libautomata.AutomataApi
 import com.autoseer.libautomata.IPattern
+import com.autoseer.libautomata.Match
 import com.autoseer.libautomata.Region
 import com.autoseer.libautomata.Size
 import com.autoseer.libautomata.Templates
@@ -12,26 +13,24 @@ import com.autoseer.libautomata.Templates
  *
  *   選擇格(grid) → 比對定位並點目標因子卡 → 詳情頁(detail)
  *
- * and can back out to the grid from any layer. Locating a factor is template-free:
- * each top-row card cell is cropped and compared (multi-scale [AutomataApi.similarity])
- * to the target's captured reference image ([FactorTarget.pattern]); if none matches,
- * the grid scrolls one row and the scan repeats. Two light screen-id templates
- * (grid/detail markers) gate the state so we never tap blind.
- *
- * Robustness: scanning waits for the grid to STOP moving first (avoid capturing a
- * mid-scroll frame), and "rewind to top" scrolls up until the frame stops changing
- * (a fixed count can't recover once scrolled deep into a long library). There is no
- * long-press primitive, so scrolling uses a slow swipe to approximate 長按拖曳.
+ * Locating a factor is template-free and position-free: the captured library image
+ * ([FactorTarget.pattern]) is resized to the on-grid card size and slid over the
+ * WHOLE grid region (multi-scale [AutomataApi.find]); the best peak's location is
+ * the card, wherever it sits. This tolerates any scroll offset (cards settle at
+ * arbitrary y) and any capture size — verified offline: correct card peaks ~0.90 at
+ * its true centre, a card that isn't on screen peaks ≤0.49. If nothing matches, the
+ * grid scrolls down and we rescan; to rewind we scroll up until the frame stops
+ * changing (a fixed count can't recover from deep in a long library). Two light
+ * screen-id templates (grid/detail markers) gate the state so we never tap blind.
  */
 class FactorNavigator(
     private val api: AutomataApi,
     private val templates: Templates,
     private val delays: BattleDelays,
     /**
-     * Hide/show the floating overlay. The overlay window is captured by
-     * MediaProjection, so if the bubble sits over a card it occludes it in the
-     * matching screenshot and that card never matches. Scanning hides it, then
-     * restores it. Default no-op (e.g. tests).
+     * Hide/show the floating overlay. The overlay is captured by MediaProjection, so
+     * a bubble over a card occludes it in the screenshot and it never matches;
+     * scanning hides it, then restores it. Default no-op (e.g. tests).
      */
     private val setChromeVisible: (Boolean) -> Unit = {},
 ) {
@@ -67,7 +66,7 @@ class FactorNavigator(
         return isOnGrid()
     }
 
-    /** Long drag upward (下→上) to reveal the next row of factors. */
+    /** Long drag upward (下→上) to reveal the next rows of factors. */
     fun scrollDownOneRow() {
         api.swipe(SeerLayout.GRID_SCROLL_BOTTOM, SeerLayout.GRID_SCROLL_TOP, GRID_SCROLL_MS)
         api.sleep(GRID_SETTLE_MS)
@@ -80,10 +79,9 @@ class FactorNavigator(
     }
 
     /**
-     * Find [target] on the grid and tap it. First scans the current (settled) view
-     * — the target is often already visible, so it enters with no scrolling. If not,
-     * rewinds to the true top and scans downward row by row. Returns true once we
-     * leave the grid onto the factor's 詳情頁.
+     * Find [target] on the grid and tap it. Scans the current (settled) view — the
+     * card is found wherever it sits — then, if absent, rewinds to the true top and
+     * scrolls down rescanning. Returns true once we leave the grid onto the 詳情頁.
      */
     fun findAndTapFactor(
         target: FactorTarget,
@@ -91,10 +89,7 @@ class FactorNavigator(
         threshold: Double = MATCH_THRESHOLD,
     ): Boolean {
         settleGrid()
-        if (isOnGrid()) {
-            val col = bestColumn(target, threshold)
-            if (col >= 0) return tapColumn(col, target)
-        }
+        findTargetOnScreen(target, threshold)?.let { return tapMatch(it, target) }
         scrollToTop()
         for (attempt in 0..maxScrolls) {
             settleGrid()
@@ -102,50 +97,44 @@ class FactorNavigator(
                 api.logger.w("因子導航：目前不在選擇格，無法比對定位")
                 return false
             }
-            val col = bestColumn(target, threshold)
-            if (col >= 0) return tapColumn(col, target)
+            findTargetOnScreen(target, threshold)?.let { return tapMatch(it, target) }
             if (attempt < maxScrolls) scrollDownOneRow()
         }
         api.logger.w("因子導航：捲完整份清單仍找不到「${target.name}」")
         return false
     }
 
-    /** Tap the matched column and confirm we left the grid onto the 詳情頁. */
-    private fun tapColumn(col: Int, target: FactorTarget): Boolean {
-        api.logger.i("因子「${target.name}」命中第 ${col + 1} 欄 → 點選")
-        api.click(SeerLayout.factorCardSlot(col))
-        return api.waitUntil(DETAIL_WAIT_MS, 300) { isOnDetail() || !isOnGrid() }
-    }
-
-    /** Best-matching top-row column (0-based) for [target] at/above [threshold], or -1. */
-    private fun bestColumn(target: FactorTarget, threshold: Double): Int {
-        var bestCol = -1
-        var bestScore = threshold
-        for (col in 0 until SeerLayout.FACTOR_CARD_COUNT) {
-            val region = SeerLayout.factorCardMatchRegion(col) ?: continue
-            api.cropScreen(region).use { crop ->
-                val s = scoreCard(target.pattern, crop, logDims = col == 0, name = target.name)
-                api.logger.i("  因子比對 第${col + 1}欄 score=${(s * 100).toInt()}%")
-                if (s > bestScore) { bestScore = s; bestCol = col }
+    /**
+     * Best match of [target] anywhere in the grid region, at/above [threshold], or
+     * null. The library image is resized to the on-grid card size across [SCAN_SCALES]
+     * (absorbs capture-size drift) and slid over the region; the peak's location is
+     * the card. Uses the current (already-settled) screen — no refresh here so all
+     * scales see the same frame.
+     */
+    private fun findTargetOnScreen(target: FactorTarget, threshold: Double): Match? {
+        var best: Match? = null
+        for (s in SCAN_SCALES) {
+            val tw = (CARD_W * s).toInt()
+            val th = (CARD_H * s).toInt()
+            if (tw < 8 || th < 8) continue
+            target.pattern.resize(Size(tw, th)).use { scaled ->
+                val m = api.find(scaled, GRID_REGION, threshold = 0.0)
+                val cur = best
+                if (m != null && (cur == null || m.score > cur.score)) best = m
             }
         }
-        return bestCol
+        val b = best
+        if (b != null) {
+            api.logger.i("因子「${target.name}」全區最佳 score=${(b.score * 100).toInt()}% @(${b.region.center.x},${b.region.center.y})")
+        }
+        return b?.takeIf { it.score >= threshold }
     }
 
-    /**
-     * Score how well the library [tmpl] matches the card in [crop]. The captured
-     * library card can be at a different absolute size/aspect than the on-grid card
-     * cell (擷卡時的框大小不一), which pushes the true match outside a plain multi-scale
-     * sweep and yields a garbage score. So first force the template to the cell's card
-     * geometry (kills that drift), then fine-sweep for alignment.
-     */
-    private fun scoreCard(tmpl: IPattern, crop: IPattern, logDims: Boolean, name: String): Double {
-        val tw = (crop.width * CANON_FRAC).toInt().coerceAtLeast(8)
-        val th = (crop.height * CANON_FRAC).toInt().coerceAtLeast(8)
-        if (logDims) {
-            api.logger.i("因子比對「$name」模板 ${tmpl.width}x${tmpl.height} → 卡格幾何 ${tw}x${th}（卡格 ${crop.width}x${crop.height}）")
-        }
-        return tmpl.resize(Size(tw, th)).use { canon -> api.similarity(canon, crop, FINE_SCALES) }
+    /** Tap the matched card's centre and confirm we left the grid onto the 詳情頁. */
+    private fun tapMatch(m: Match, target: FactorTarget): Boolean {
+        api.logger.i("因子「${target.name}」命中 → 點 (${m.region.center.x},${m.region.center.y})")
+        api.click(m.region.center)
+        return api.waitUntil(DETAIL_WAIT_MS, 300) { isOnDetail() || !isOnGrid() }
     }
 
     // ---- 畫面穩定 / 捲到頂 偵測（比對前後兩幀是否幾乎相同）----
@@ -194,11 +183,14 @@ class FactorNavigator(
 
     companion object {
         private const val MAX_BACKS = 4
-        private const val MAX_SCROLLS = 14       // rows to scan before giving up
+        private const val MAX_SCROLLS = 18       // rescans before giving up (long libraries)
         private const val MARKER_THRESHOLD = 0.70 // screen-id markers (video-derived; loose)
-        private const val MATCH_THRESHOLD = 0.55  // card similarity（自比非對角≤0.39，留餘裕）
-        private const val CANON_FRAC = 0.86       // 模板先縮到卡格幾何的比例（卡約佔卡格 0.88w×0.93h）
-        private val FINE_SCALES = listOf(0.80, 0.88, 0.94, 1.0, 1.06, 1.12) // 卡格內細對位
+        private const val MATCH_THRESHOLD = 0.68  // card peak（實幀：命中≥0.90、未在畫面≤0.49）
+        // 卡片在格上的實際尺寸（正規化）＋掃描尺度：模板縮到此範圍在全區滑動
+        private const val CARD_W = 176
+        private const val CARD_H = 298
+        private val SCAN_SCALES = listOf(0.85, 0.92, 1.0, 1.08, 1.15)
+        private val GRID_REGION = Region(210, 100, 1065, 620) // 卡片格整體區域（避開左欄/頂列頁籤）
         private const val CHROME_SETTLE_MS = 250L // 隱藏懸浮窗後等合成器把它移出畫面再截圖
         private const val GRID_SCROLL_MS = 700L   // slow drag ≈ 長按拖曳（無長按原語）
         private const val GRID_SETTLE_MS = 500L

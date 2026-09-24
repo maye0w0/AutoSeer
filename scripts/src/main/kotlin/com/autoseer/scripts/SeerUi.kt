@@ -183,7 +183,11 @@ object SeerLayout {
 
     private const val FACTOR_CARD_MARGIN = 12
 
-    /** 選擇格捲動手勢端點（下→上＝看更多因子；上→下＝回頂）。x 取畫面中央以避開卡點選。 */
+    /**
+     * 選擇格捲動手勢端點（下→上＝看更多因子；上→下＝回頂）。x 取畫面中央以避開卡點選。
+     * 幅度刻意偏小（約 300px、<一排多），避免一次捲太多跳過某排，使每張卡都有機會
+     * 完整出現在畫面上被全區比對找到（實機回饋：幅度過大會漏深處卡）。
+     */
     val GRID_SCROLL_BOTTOM = Location(640, 560)
-    val GRID_SCROLL_TOP = Location(640, 200)
+    val GRID_SCROLL_TOP = Location(640, 260)
 }
