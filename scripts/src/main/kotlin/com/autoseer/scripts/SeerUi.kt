@@ -82,14 +82,17 @@ object SeerLayout {
      * Pet-switch slots on the 換精靈 sub-screen (opened by tapping 精靈), 精靈1..6
      * left-to-right (codes 11..16). Switch = tap 精靈 → tap slot → drag up to deploy.
      */
-    // Measured from the real 換精靈 screen (cards along the bottom, center y≈630).
+    // 換精靈子畫面 6 張卡的「頭像」區（正規化 1280x720），center 即點卡拖出戰的著點，
+    // 也是與 [FIELD_HEAD] 比對的目標。校準自 1600x900 實機影片幀：舊值(整張卡、寬175)
+    // 的 center 系統性偏右 50~100px，點在名字/間隔上而非頭像 → 換人只有 30~40% 成功。
+    // 仍屬影片目測，若某卡實機仍點偏，微調該列 x 即可。
     val PET_REGIONS = listOf(
-        Region(10, 575, 175, 110),  // 精靈1
-        Region(192, 575, 175, 110), // 精靈2
-        Region(377, 575, 175, 110), // 精靈3
-        Region(562, 575, 175, 110), // 精靈4
-        Region(747, 575, 175, 110), // 精靈5
-        Region(925, 575, 130, 110), // 精靈6（右側較窄，避開動作鈕）
+        Region(4, 580, 64, 64),    // 精靈1（頭像中心 ≈36,612）
+        Region(168, 580, 64, 64),  // 精靈2（≈200,612）
+        Region(364, 580, 64, 64),  // 精靈3（≈396,612）
+        Region(516, 580, 64, 64),  // 精靈4（≈548,612）
+        Region(716, 580, 64, 64),  // 精靈5（≈748,612）
+        Region(908, 580, 64, 64),  // 精靈6（≈940,612）
     )
     val PET_SLOTS: List<Location> = PET_REGIONS.map { it.center }
     val PET_COUNT = PET_SLOTS.size
@@ -100,23 +103,13 @@ object SeerLayout {
     const val PET_DEPLOY_UP_PX = 340
 
     /**
-     * 場上「當前上場精靈」頭像區域（畫面左上角，正規化 1280x720）。換人後裁此處，
-     * 與換人前記下的目標卡頭像比對，確認真的換成該精靈（[BattleTurnRunner] 驗證用）。
-     * 座標估自 1600x900 實機影片 ×0.8，**需以實機截圖校準**。
+     * 場上「當前上場精靈」頭像區域（畫面左上角，正規化 1280x720）。換人後裁此處，與換人
+     * 前記下的目標卡頭像比對（診斷 log；未來校準門檻後可重啟嚴格驗證）。校準自實機影片幀。
      */
-    val FIELD_HEAD = Region(14, 10, 56, 58)
+    val FIELD_HEAD = Region(8, 8, 68, 64)
 
-    /**
-     * 換精靈子畫面第 [n] 張卡(1..6)的「頭像」子區域（正規化 1280x720），取卡片左側
-     * 主要美術（避開名字/血條）。換人前裁此處記住目標，之後與 [FIELD_HEAD] 比對。
-     * 由 [PET_REGIONS] 推算、為估計值，**需以實機截圖校準**。
-     */
-    fun petCardHead(n: Int): Region? {
-        val card = PET_REGIONS.getOrNull(n - 1) ?: return null
-        val w = (card.width * 0.6f).toInt()
-        val h = (card.height * 0.7f).toInt()
-        return Region(card.x + 3, card.y + 3, w, h)
-    }
+    /** 換精靈子畫面第 [n] 張卡(1..6)的頭像區＝ [PET_REGIONS]（已是頭像區），供與 [FIELD_HEAD] 比對。 */
+    fun petCardHead(n: Int): Region? = PET_REGIONS.getOrNull(n - 1)
 
     /** Tap point for a simple code (1..9), or null. Pet codes handled separately. */
     fun pointFor(code: Int): Location? = TAP_POINTS.getOrNull(code - 1)
