@@ -99,6 +99,25 @@ object SeerLayout {
     /** Drag this many normalized px upward from a pet slot to deploy it (拖動出戰). */
     const val PET_DEPLOY_UP_PX = 340
 
+    /**
+     * 場上「當前上場精靈」頭像區域（畫面左上角，正規化 1280x720）。換人後裁此處，
+     * 與換人前記下的目標卡頭像比對，確認真的換成該精靈（[BattleTurnRunner] 驗證用）。
+     * 座標估自 1600x900 實機影片 ×0.8，**需以實機截圖校準**。
+     */
+    val FIELD_HEAD = Region(14, 10, 56, 58)
+
+    /**
+     * 換精靈子畫面第 [n] 張卡(1..6)的「頭像」子區域（正規化 1280x720），取卡片左側
+     * 主要美術（避開名字/血條）。換人前裁此處記住目標，之後與 [FIELD_HEAD] 比對。
+     * 由 [PET_REGIONS] 推算、為估計值，**需以實機截圖校準**。
+     */
+    fun petCardHead(n: Int): Region? {
+        val card = PET_REGIONS.getOrNull(n - 1) ?: return null
+        val w = (card.width * 0.6f).toInt()
+        val h = (card.height * 0.7f).toInt()
+        return Region(card.x + 3, card.y + 3, w, h)
+    }
+
     /** Tap point for a simple code (1..9), or null. Pet codes handled separately. */
     fun pointFor(code: Int): Location? = TAP_POINTS.getOrNull(code - 1)
 
