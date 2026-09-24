@@ -1,6 +1,8 @@
 package com.autoseer.scripts
 
 import com.autoseer.libautomata.AutomataApi
+import com.autoseer.libautomata.IPattern
+import com.autoseer.libautomata.Region
 import com.autoseer.libautomata.Size
 import com.autoseer.libautomata.Templates
 
@@ -11,16 +13,15 @@ import com.autoseer.libautomata.Templates
  *   選擇格(grid) → 比對定位並點目標因子卡 → 詳情頁(detail)
  *
  * and can back out to the grid from any layer. Locating a factor is template-free:
- * each fully-visible top-row card is cropped and compared (multi-scale
- * [AutomataApi.similarity]) to the target's captured reference image
- * ([FactorTarget.pattern]); if none matches, the grid scrolls one row and the scan
- * repeats. Two light screen-id templates (grid/detail markers) gate the state so we
- * never tap blind — matched at a lenient [MARKER_THRESHOLD] because they are cut
- * from a compressed video frame (recapture on-device to tighten).
+ * each top-row card cell is cropped and compared (multi-scale [AutomataApi.similarity])
+ * to the target's captured reference image ([FactorTarget.pattern]); if none matches,
+ * the grid scrolls one row and the scan repeats. Two light screen-id templates
+ * (grid/detail markers) gate the state so we never tap blind.
  *
- * All coordinates come from [SeerLayout] (normalized 1280x720). There is no
- * long-press primitive, so scrolling uses a slow swipe to approximate 長按拖曳;
- * tune [GRID_SCROLL_MS] / thresholds on device if needed.
+ * Robustness: scanning waits for the grid to STOP moving first (avoid capturing a
+ * mid-scroll frame), and "rewind to top" scrolls up until the frame stops changing
+ * (a fixed count can't recover once scrolled deep into a long library). There is no
+ * long-press primitive, so scrolling uses a slow swipe to approximate 長按拖曳.
  */
 class FactorNavigator(
     private val api: AutomataApi,
@@ -29,8 +30,8 @@ class FactorNavigator(
     /**
      * Hide/show the floating overlay. The overlay window is captured by
      * MediaProjection, so if the bubble sits over a card it occludes it in the
-     * matching screenshot and that card never matches (實機症狀：氣泡蓋住因子→一直
-     * 捲不到). Scanning hides it, then restores it. Default no-op (e.g. tests).
+     * matching screenshot and that card never matches. Scanning hides it, then
+     * restores it. Default no-op (e.g. tests).
      */
     private val setChromeVisible: (Boolean) -> Unit = {},
 ) {
@@ -79,25 +80,24 @@ class FactorNavigator(
     }
 
     /**
-     * Find [target] on the grid and tap it, scrolling as needed. Returns true once
-     * we leave the grid onto the factor's 詳情頁. Scans only the fully-visible top
-     * row (the second row's name plate sits below the fold, matching less reliably).
+     * Find [target] on the grid and tap it. First scans the current (settled) view
+     * — the target is often already visible, so it enters with no scrolling. If not,
+     * rewinds to the true top and scans downward row by row. Returns true once we
+     * leave the grid onto the factor's 詳情頁.
      */
     fun findAndTapFactor(
         target: FactorTarget,
         maxScrolls: Int = MAX_SCROLLS,
         threshold: Double = MATCH_THRESHOLD,
     ): Boolean {
-        // 1) 先掃「當前畫面」——目標常就在可見範圍，命中即點，完全免捲動。
-        api.refreshScreen()
+        settleGrid()
         if (isOnGrid()) {
             val col = bestColumn(target, threshold)
             if (col >= 0) return tapColumn(col, target)
         }
-        // 2) 沒中 → 回到列表頂端，再往下逐排掃描（處理捲在深處的卡）。
-        repeat(TOP_REWIND) { scrollUpOneRow() }
+        scrollToTop()
         for (attempt in 0..maxScrolls) {
-            api.refreshScreen()
+            settleGrid()
             if (!isOnGrid()) {
                 api.logger.w("因子導航：目前不在選擇格，無法比對定位")
                 return false
@@ -106,6 +106,7 @@ class FactorNavigator(
             if (col >= 0) return tapColumn(col, target)
             if (attempt < maxScrolls) scrollDownOneRow()
         }
+        api.logger.w("因子導航：捲完整份清單仍找不到「${target.name}」")
         return false
     }
 
@@ -133,12 +134,12 @@ class FactorNavigator(
 
     /**
      * Score how well the library [tmpl] matches the card in [crop]. The captured
-     * library card can be at a different absolute size/aspect than the on-grid
-     * card cell (擷卡時的框大小不一），which pushes the true match outside a plain
-     * multi-scale sweep and yields a garbage score. So first force the template to
-     * the cell's card geometry (kills that drift), then fine-sweep for alignment.
+     * library card can be at a different absolute size/aspect than the on-grid card
+     * cell (擷卡時的框大小不一), which pushes the true match outside a plain multi-scale
+     * sweep and yields a garbage score. So first force the template to the cell's card
+     * geometry (kills that drift), then fine-sweep for alignment.
      */
-    private fun scoreCard(tmpl: com.autoseer.libautomata.IPattern, crop: com.autoseer.libautomata.IPattern, logDims: Boolean, name: String): Double {
+    private fun scoreCard(tmpl: IPattern, crop: IPattern, logDims: Boolean, name: String): Double {
         val tw = (crop.width * CANON_FRAC).toInt().coerceAtLeast(8)
         val th = (crop.height * CANON_FRAC).toInt().coerceAtLeast(8)
         if (logDims) {
@@ -147,17 +148,67 @@ class FactorNavigator(
         return tmpl.resize(Size(tw, th)).use { canon -> api.similarity(canon, crop, FINE_SCALES) }
     }
 
+    // ---- 畫面穩定 / 捲到頂 偵測（比對前後兩幀是否幾乎相同）----
+
+    private fun gridSample(): IPattern = api.cropScreen(GRID_SAMPLE)
+
+    /** 兩幀（同區同尺寸）幾乎相同？用於偵測「畫面停穩」「已到頂」。 */
+    private fun sameFrame(a: IPattern, b: IPattern): Boolean =
+        api.similarity(a, b, ONE_SCALE) >= STABLE_SIM
+
+    /** 等畫面停穩（連續兩幀幾乎相同）再回；最多 [SETTLE_TRIES] 次，避免枯等。 */
+    private fun settleGrid() {
+        api.refreshScreen()
+        var prev = gridSample()
+        try {
+            repeat(SETTLE_TRIES) {
+                api.sleep(SETTLE_MS)
+                api.refreshScreen()
+                val cur = gridSample()
+                val same = sameFrame(prev, cur)
+                prev.close(); prev = cur
+                if (same) return
+            }
+        } finally {
+            prev.close()
+        }
+    }
+
+    /** 往上捲到「畫面不再變化」＝已到列表頂端；最多 [MAX_REWIND] 次。 */
+    private fun scrollToTop() {
+        api.refreshScreen()
+        var prev = gridSample()
+        try {
+            repeat(MAX_REWIND) {
+                scrollUpOneRow()
+                api.refreshScreen()
+                val cur = gridSample()
+                val same = sameFrame(prev, cur)
+                prev.close(); prev = cur
+                if (same) return
+            }
+        } finally {
+            prev.close()
+        }
+    }
+
     companion object {
         private const val MAX_BACKS = 4
-        private const val MAX_SCROLLS = 12       // rows to scan before giving up
-        private const val TOP_REWIND = 6         // drags down to reach the list top first
+        private const val MAX_SCROLLS = 14       // rows to scan before giving up
         private const val MARKER_THRESHOLD = 0.70 // screen-id markers (video-derived; loose)
-        private const val MATCH_THRESHOLD = 0.60  // card similarity (tune on device)
+        private const val MATCH_THRESHOLD = 0.55  // card similarity（自比非對角≤0.39，留餘裕）
         private const val CANON_FRAC = 0.86       // 模板先縮到卡格幾何的比例（卡約佔卡格 0.88w×0.93h）
         private val FINE_SCALES = listOf(0.80, 0.88, 0.94, 1.0, 1.06, 1.12) // 卡格內細對位
         private const val CHROME_SETTLE_MS = 250L // 隱藏懸浮窗後等合成器把它移出畫面再截圖
         private const val GRID_SCROLL_MS = 700L   // slow drag ≈ 長按拖曳（無長按原語）
         private const val GRID_SETTLE_MS = 500L
         private const val DETAIL_WAIT_MS = 6_000L
+        // 畫面穩定/到頂偵測
+        private const val STABLE_SIM = 0.90       // 兩幀相似度≥此值＝視為同一畫面（容忍粒子動畫）
+        private const val MAX_REWIND = 15         // 回頂最多往上捲幾次（到頂即止）
+        private const val SETTLE_TRIES = 5        // 等停穩最多幾輪
+        private const val SETTLE_MS = 200L
+        private val ONE_SCALE = listOf(1.0)
+        private val GRID_SAMPLE = Region(216, 100, 900, 340) // 變化偵測取樣：頂列卡帶
     }
 }
