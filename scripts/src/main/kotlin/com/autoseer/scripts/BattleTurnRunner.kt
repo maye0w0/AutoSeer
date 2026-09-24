@@ -155,7 +155,7 @@ class BattleTurnRunner(
                 api.click(slot); api.sleep(300)
                 api.swipe(slot, Location(slot.x, slot.y - SeerLayout.PET_DEPLOY_UP_PX), 450)
                 api.sleep(delays.afterSwitch); api.refreshScreen()
-                val ok = verifyDeployed(cardHead)
+                val ok = verifyDeployed(cardHead, activeSwitch = !alreadyOpen)
                 cardHead?.close()
                 if (ok) return true
                 api.logger.w("換精靈未通過驗證")
@@ -166,27 +166,36 @@ class BattleTurnRunner(
     }
 
     /**
-     * Did the switch complete? The reliable signal is leaving the 換精靈 介面: once a
-     * pet is on the field, PET_DEFEATED is gone — and 主動切換 (alive pet) never shows
-     * PET_DEFEATED at all, so it counts as done immediately. We deliberately do NOT
-     * fail on a low head-similarity: on device the FIELD_HEAD / petCardHead coords
-     * aren't calibrated yet, so a low score means "coords unset", not "switch
-     * failed" — treating it as failure (the previous behavior) made every switch
-     * mis-fire into a retry that mis-tapped a skill popup, then 放棄→撤退. The
-     * similarity is logged for diagnosis only; once the coords are calibrated it can
-     * be promoted back into the pass/fail decision.
+     * Did the switch complete? Uses a coordinate-free signal that differs by case,
+     * so it survives the still-uncalibrated head coords:
+     *  - 主動切換 (activeSwitch — pet was alive): success = the turn got consumed →
+     *    「你的回合」(BATTLE_ACTION) disappears (換人後直接進 Boss 回合). The 換精靈
+     *    sub-screen keeps 「你的回合」 visible, so it clears only once a pet actually
+     *    takes the field; a missed tap/drag leaves the turn ours → retry. (The old
+     *    "no PET_DEFEATED → always success" made a missed 主動切換 look successful, so
+     *    the original pet stayed in and the sequence drifted — the 30–40% flakiness.)
+     *  - 陣亡補位 (else): success = leaving the 換精靈 介面 (PET_DEFEATED gone).
+     * Head-similarity is logged for diagnosis only (uncalibrated coords → a low score
+     * means "coords unset", not "switch failed"; it must not drive pass/fail).
      */
-    private fun verifyDeployed(cardHead: IPattern?): Boolean {
-        val stillSwitching = exists(SeerTemplates.PET_DEFEATED)
-        if (cardHead != null) {
-            runCatching { api.cropScreen(SeerLayout.FIELD_HEAD) }.getOrNull()?.let { field ->
-                val sim = api.similarity(cardHead, field)
-                field.close()
-                val mark = if (sim >= HEAD_MATCH_THRESHOLD) "≥門檻" else "<門檻(座標未校準?)"
-                api.logger.i("換精靈頭像 similarity=${"%.2f".format(sim)} $mark（診斷；成敗以是否離開換精靈介面為準）")
-            }
+    private fun verifyDeployed(cardHead: IPattern?, activeSwitch: Boolean): Boolean {
+        logHeadSimilarity(cardHead)
+        return if (activeSwitch) {
+            api.waitUntil(SWITCH_VERIFY_MS, pollMs = 300) { !exists(SeerTemplates.BATTLE_ACTION) }
+        } else {
+            api.waitUntil(SWITCH_VERIFY_MS, pollMs = 300) { !exists(SeerTemplates.PET_DEFEATED) }
         }
-        return !stillSwitching
+    }
+
+    /** Log 場上頭像 vs 目標卡頭像 similarity — for on-device coord calibration only. */
+    private fun logHeadSimilarity(cardHead: IPattern?) {
+        if (cardHead == null) return
+        runCatching { api.cropScreen(SeerLayout.FIELD_HEAD) }.getOrNull()?.let { field ->
+            val sim = api.similarity(cardHead, field)
+            field.close()
+            val mark = if (sim >= HEAD_MATCH_THRESHOLD) "≥門檻" else "<門檻(座標未校準?)"
+            api.logger.i("換精靈頭像 similarity=${"%.2f".format(sim)} $mark（診斷）")
+        }
     }
 
     private fun exists(id: String): Boolean = templates.has(id) && api.exists(templates.get(id))
@@ -196,6 +205,7 @@ class BattleTurnRunner(
         private const val TURN_SETTLE_MS = 12_000L
         private const val OUTCOME_POLLS = 6   // ~1.8s to read the win/lose diamond
         private const val SWITCH_ATTEMPTS = 3 // 換人「點卡→驗證」重試次數（同一目標）
+        private const val SWITCH_VERIFY_MS = 5_000L // 換人後等成功訊號（你的回合/換精靈介面消失）
         // 頭像相似度門檻，目前僅供 verifyDeployed 的診斷 log 標記，**不主導換人成敗**
         // （實機 FIELD_HEAD/petCardHead 座標未校準時 similarity 偏低，若用來判失敗會誤判
         // →重試誤觸）。0.55 出自影片壓縮幀；實機校準座標後可重啟嚴格驗證。

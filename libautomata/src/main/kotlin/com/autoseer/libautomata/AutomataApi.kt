@@ -100,14 +100,18 @@ class AutomataApi(
      */
     fun similarity(a: IPattern, b: IPattern, scales: List<Double> = DEFAULT_SCALES): Double {
         checkRunning()
+        // Slide the SMALLER crop (as template) across the larger one; a template
+        // bigger than the searched image fits no scale and would always return -1.
+        val (tmpl, img) =
+            if (a.width.toLong() * a.height <= b.width.toLong() * b.height) a to b else b to a
         var best = -1.0
         for (s in scales) {
-            val w = (a.width * s).toInt()
-            val h = (a.height * s).toInt()
-            if (w < 4 || h < 4 || w > b.width || h > b.height) continue
-            a.resize(Size(w, h)).use { scaled ->
+            val w = (tmpl.width * s).toInt()
+            val h = (tmpl.height * s).toInt()
+            if (w < 4 || h < 4 || w > img.width || h > img.height) continue
+            tmpl.resize(Size(w, h)).use { scaled ->
                 // threshold below any CCOEFF_NORMED value so the top peak is always returned
-                matcher.match(b, scaled, -1.0).firstOrNull()?.let { m ->
+                matcher.match(img, scaled, -1.0).firstOrNull()?.let { m ->
                     if (m.score > best) best = m.score
                 }
             }
