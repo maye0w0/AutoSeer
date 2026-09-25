@@ -28,9 +28,12 @@ import com.autoseer.overlay.ControlOverlay
 import com.autoseer.core.ScriptStore
 import com.autoseer.core.SeerScript
 import com.autoseer.runner.ScriptRunner
+import com.autoseer.core.FactorLibrary
 import com.autoseer.core.FactorPlan
 import com.autoseer.scripts.BattleScript
+import com.autoseer.scripts.BattlePlan
 import com.autoseer.scripts.BattlePlanParser
+import com.autoseer.scripts.FactorTarget
 import com.autoseer.scripts.FactorNavTestScript
 import com.autoseer.scripts.FactorNavigator
 import com.autoseer.scripts.FactorSweepProgress
@@ -148,22 +151,22 @@ class AutoSeerService : Service() {
             Log.w(TAG, "無選取腳本，取消啟動")
             return
         }
-        val parsed = BattlePlanParser.parse(
-            text = script.planText,
-            maxBattles = script.maxBattles,
-            healBeforeBattle = RunPrefs.healBeforeBattle(this),
-            advanceMap = script.advanceMap,
-            defaultSlot = RunPrefs.defaultSlot(this),
-            startStage = RunPrefs.startStage(this),
-            maxRetriesPerStage = script.maxRetries,
-            // 循環輪數已移除：精靈因子改由「達到每天操作上限」自然結束（SeerFactorScript）。
-        )
-        parsed.warnings.forEach { Log.w(TAG, "計畫解析警告：$it") }
         val delays = DelayPrefs.toBattleDelays(this)
-        // 多因子銜接：依「因子關卡排序」計畫取得要打的因子清單（FactorPlan：已勾選子集＋順序；
-        // 無計畫＝全部依檔名，維持開箱即用）。此清單只驅動「選擇/進入」導航模組，不碰戰鬥模組。
-        val factorTargets = FactorPlan.forSweep(this)
-        overlay?.setStatus("腳本「${script.displayName}」 ${BattlePlanParser.describe(parsed.plan)}")
+        val defaultPlan = parseFactorPlan(script)
+        overlay?.setStatus("腳本「${script.displayName}」 ${BattlePlanParser.describe(defaultPlan)}")
+        // 多因子銜接＋每因子腳本：依「因子關卡排序」取得(因子, 指派腳本)清單，對齊解出各自作戰計畫；
+        // 未指派＝跟隨主畫面所選腳本。此只驅動「選擇/進入」導航與挑哪個計畫，戰鬥回合引擎不受影響。
+        val entries = FactorPlan.resolvedEntries(this)
+        val imgByName = FactorLibrary.list(this).associateBy { it.displayName }
+        val factorTargets = ArrayList<FactorTarget>()
+        val factorPlans = ArrayList<BattlePlan>()
+        for (e in entries) {
+            val img = imgByName[e.name] ?: continue
+            val target = FactorLibrary.loadTargets(this, listOf(img)).firstOrNull() ?: continue
+            val scr = e.scriptId?.let { ScriptStore.get(this, it) } ?: script
+            factorTargets += target
+            factorPlans += parseFactorPlan(scr)
+        }
         runner.start { api ->
             if (script.category == SeerScript.CATEGORY_SEER_FACTOR) {
                 val sweep = if (factorTargets.isNotEmpty()) {
@@ -176,15 +179,31 @@ class AutoSeerService : Service() {
                     )
                 } else null
                 SeerFactorScript(
-                    api, templates, parsed.plan, delays,
+                    api, templates, factorPlans.firstOrNull() ?: defaultPlan, delays,
                     backToLobbyOnExhaust = RunPrefs.backToLobbyOnRetryExhausted(this),
                     sweep = sweep,
+                    factorPlans = factorPlans.takeIf { it.isNotEmpty() },
                     onProgress = { stageNo, cleared -> overlay?.setProgress(stageNo, cleared) },
                 )
             } else {
-                BattleScript(api, templates, parsed.plan, delays)
+                BattleScript(api, templates, defaultPlan, delays)
             }
         }
+    }
+
+    /** Parse one saved script into a [BattlePlan] (script fields + global run options). */
+    private fun parseFactorPlan(script: SeerScript): BattlePlan {
+        val parsed = BattlePlanParser.parse(
+            text = script.planText,
+            maxBattles = script.maxBattles,
+            healBeforeBattle = RunPrefs.healBeforeBattle(this),
+            advanceMap = script.advanceMap,
+            defaultSlot = RunPrefs.defaultSlot(this),
+            startStage = RunPrefs.startStage(this),
+            maxRetriesPerStage = script.maxRetries,
+        )
+        parsed.warnings.forEach { Log.w(TAG, "計畫解析警告：$it") }
+        return parsed.plan
     }
 
     /** Save the current normalized color frame to <externalFilesDir>/captures for cropping into templates. */

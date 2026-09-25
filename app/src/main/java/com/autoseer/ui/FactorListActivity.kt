@@ -24,10 +24,13 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.doOnLayout
 import com.autoseer.core.FactorLibrary
+import com.autoseer.core.FactorPlanEntry
 import com.autoseer.core.FactorPlanPrefs
 import com.autoseer.core.PetImagePrefs
 import com.autoseer.core.SafImage
 import com.autoseer.core.SafStore
+import com.autoseer.core.ScriptStore
+import com.autoseer.core.SeerScript
 
 /**
  * 因子關卡排序 — two layers with native drag-and-drop:
@@ -66,10 +69,14 @@ class FactorListActivity : AppCompatActivity() {
 
     /** Ordered selected display-names (the fight order). */
     private val order = ArrayList<String>()
+    /** name → assigned script id (absent/null = follow the main-screen selected script). */
+    private val assign = HashMap<String, String?>()
     /** Every image in the folder (file-name order). Mutable: delete removes entries. */
     private val allImages = ArrayList<SafImage>()
     private val thumbs = HashMap<String, Bitmap>()
     private var cols = 5
+    private var factorScripts: List<SeerScript> = emptyList()
+    private var selectedScriptName: String = ""
 
     private lateinit var runFrame: FrameLayout
     private lateinit var runGrid: LinearLayout
@@ -101,9 +108,13 @@ class FactorListActivity : AppCompatActivity() {
 
         val tree = PetImagePrefs.treeUri(this)
         if (!tree.isNullOrBlank()) allImages.addAll(FactorLibrary.list(this))
-        // Pre-select from the saved plan, reconciled to files that still exist (order kept).
+        factorScripts = ScriptStore.list(this, SeerScript.CATEGORY_SEER_FACTOR)
+        selectedScriptName = ScriptStore.selected(this)?.displayName ?: ""
+        // Pre-select from the saved plan, reconciled to files that still exist (order + assignment kept).
         val existing = allImages.map { it.displayName }.toHashSet()
-        FactorPlanPrefs.getOrder(this)?.forEach { if (it in existing && it !in order) order.add(it) }
+        FactorPlanPrefs.getEntries(this)?.forEach { e ->
+            if (e.name in existing && e.name !in order) { order.add(e.name); assign[e.name] = e.scriptId }
+        }
 
         setContentView(buildUi(tree))
         if (allImages.isNotEmpty()) loadThumbsAsync()
@@ -156,7 +167,7 @@ class FactorListActivity : AppCompatActivity() {
 
         // 底部動作列
         val bar = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; setPadding(0, dp(10), 0, 0) }
-        bar.addView(btn("清除運行排序", cField) { order.clear(); persist(); rebuild() }, lpW(1f))
+        bar.addView(btn("清除運行排序", cField) { order.clear(); assign.clear(); persist(); rebuild() }, lpW(1f))
         bar.addView(
             btn("儲存並返回", cGood) { persist(); toast("已儲存排序：${order.size} 個因子"); finish() }
                 .apply { setTypeface(typeface, Typeface.BOLD) },
@@ -387,6 +398,15 @@ class FactorListActivity : AppCompatActivity() {
         }
         col.addView(frame, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, WRAP))
         col.addView(label, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, WRAP))
+        if (fromRun) {
+            val chip = TextView(this).apply {
+                text = scriptChipLabel(image.displayName); setTextColor(cInk); textSize = 10f
+                gravity = Gravity.CENTER; maxLines = 1; ellipsize = TextUtils.TruncateAt.END
+                background = rounded(cField, 8); setPadding(dp(4), dp(3), dp(4), dp(3)); isClickable = true
+                setOnClickListener { pickScript(image.displayName) }
+            }
+            col.addView(chip, LinearLayout.LayoutParams(MATCH, WRAP).apply { topMargin = dp(3) })
+        }
         col.setOnLongClickListener {
             draggingView = col
             val data = ClipData.newPlainText("factor", image.displayName)
@@ -410,7 +430,35 @@ class FactorListActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun persist() = FactorPlanPrefs.setOrder(this, order)
+    private fun persist() =
+        FactorPlanPrefs.setEntries(this, order.map { FactorPlanEntry(it, assign[it]) })
+
+    /** Chip caption for a run-order card: the assigned script, or 預設 (follow selected). */
+    private fun scriptChipLabel(name: String): String {
+        val sid = assign[name] ?: return "腳本：預設"
+        val nm = factorScripts.firstOrNull { it.id == sid }?.displayName ?: "預設"
+        return "腳本：$nm"
+    }
+
+    /** Assign a script (or 預設) to one factor via a single-choice dialog. */
+    private fun pickScript(name: String) {
+        val labels = ArrayList<String>()
+        labels += "預設（跟隨：${selectedScriptName.ifBlank { "所選腳本" }}）"
+        factorScripts.forEach { labels += it.displayName }
+        val cur = assign[name]
+        val checked = if (cur == null) 0
+            else factorScripts.indexOfFirst { it.id == cur }.let { if (it < 0) 0 else it + 1 }
+        val items = Array<CharSequence>(labels.size) { labels[it] }
+        AlertDialog.Builder(this)
+            .setTitle("指派「${name.substringBeforeLast('.')}」的腳本")
+            .setSingleChoiceItems(items, checked) { d, which ->
+                assign[name] = if (which == 0) null else factorScripts[which - 1].id
+                persist(); rebuild()
+                d.dismiss()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
 
     // ---- small view helpers ----
 

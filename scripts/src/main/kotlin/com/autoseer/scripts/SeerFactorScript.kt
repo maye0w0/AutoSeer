@@ -32,6 +32,12 @@ class SeerFactorScript(
      * 全部打完才回大廳。此鉤子只在因子與因子之間取得控制，戰鬥流程完全不經手。
      */
     private val sweep: FactorSweep? = null,
+    /**
+     * 每個因子各自的作戰計畫（依 [sweep] 前進順序對齊）。null=所有因子共用單一 [plan]
+     * （情況1，行為不變）。非 null 時：進入/銜接到第 i 個因子就把生效計畫換成
+     * factorPlans[i]（越界回退 [plan]）。只換「用哪個計畫」，戰鬥回合引擎不受影響。
+     */
+    private val factorPlans: List<BattlePlan>? = null,
     /** 進度回報（stageNo 從 1 起、cleared=已清關數），供懸浮視窗顯示。 */
     private val onProgress: (stageNo: Int, cleared: Int) -> Unit = { _, _ -> },
 ) : Script(api) {
@@ -40,7 +46,10 @@ class SeerFactorScript(
 
     private val m = SeerModules(api, templates)
     private val runner = BattleTurnRunner(api, templates, delays)
-    private val progress = SweepProgress(plan, backToLobbyOnExhaust)
+    /** 目前生效的作戰計畫（多因子時隨因子切換；單因子＝建構傳入的 [plan]）。 */
+    private var activePlan: BattlePlan = factorPlans?.getOrNull(0) ?: plan
+    private var factorIdx = 0
+    private val progress = SweepProgress(activePlan, backToLobbyOnExhaust)
 
     /** Stages cleared so far (for logs / UI). */
     val battlesDone: Int get() = progress.battlesDone
@@ -48,7 +57,7 @@ class SeerFactorScript(
     private var stop = false
 
     override fun run() {
-        api.logger.i("精靈因子掃蕩開始：每輪關數=${plan.stagesPerLoop}, 起始關=${plan.startStage}")
+        api.logger.i("精靈因子掃蕩開始：每輪關數=${activePlan.stagesPerLoop}, 起始關=${activePlan.startStage}")
         emitProgress()
         // 多因子銜接：先由選擇格導航進第一個指定因子的詳情頁（單因子模式跳過）。
         if (sweep != null && !sweep.enterFirst()) {
@@ -141,9 +150,9 @@ class SeerFactorScript(
     private fun fightThisStage() {
         val stageIdx = progress.currentStageIndex()
         emitProgress()
-        val stage = plan.forStage(stageIdx)
+        val stage = activePlan.forStage(stageIdx)
         val label = "（第 ${stageIdx + 1} 關｜已清 ${progress.battlesDone}｜重試 ${progress.retriesThisStage}）"
-        when (runner.fight(stage.steps, plan.defaultCode, label)) {
+        when (runner.fight(stage.steps, activePlan.defaultCode, label)) {
             BattleTurnRunner.Result.WIN -> onWin()
             BattleTurnRunner.Result.LOSE -> onLose("失敗")
             BattleTurnRunner.Result.PLAN_EXHAUSTED -> {
@@ -209,9 +218,11 @@ class SeerFactorScript(
         api.sleep(delays.afterResultTap)
         if (sweep != null) {
             return if (sweep.advanceToNext()) {
-                progress.onFactorSwitch()
+                factorIdx++
+                activePlan = factorPlans?.getOrNull(factorIdx) ?: plan
+                progress.onFactorSwitch(activePlan)
                 emitProgress()
-                api.logger.i("已銜接到下一個指定因子，繼續掃蕩。")
+                api.logger.i("已銜接到下一個指定因子（第 ${factorIdx + 1} 個），繼續掃蕩。")
                 true
             } else {
                 api.logger.i("指定因子已全部打完 → 回大廳並停止。")

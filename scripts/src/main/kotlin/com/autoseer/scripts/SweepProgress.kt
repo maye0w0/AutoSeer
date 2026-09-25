@@ -7,7 +7,7 @@ package com.autoseer.scripts
  * retry-limit→stop) is unit-testable without a device.
  */
 class SweepProgress(
-    private val plan: BattlePlan,
+    private var plan: BattlePlan,
     private val backToLobbyOnExhaust: Boolean = false,
 ) {
     /** What the caller should do after a loss/retreat. */
@@ -36,8 +36,12 @@ class SweepProgress(
      * Moving on to a new factor: restart the per-stage plan cursor from this
      * factor's first stage, and clear per-stage retries. [battlesDone] (the run
      * total shown in the UI) is intentionally kept.
+     *
+     * [newPlan] swaps the active battle plan for the new factor (per-factor scripts,
+     * 情況2); null keeps the current plan (single-plan sweep, 情況1 — unchanged).
      */
-    fun onFactorSwitch() {
+    fun onFactorSwitch(newPlan: BattlePlan? = null) {
+        if (newPlan != null) plan = newPlan
         factorStageBaseline = battlesDone
         retriesThisStage = 0
     }
