@@ -104,4 +104,15 @@ object SafStore {
     } catch (e: Exception) {
         Log.e(TAG, "SAF 讀圖失敗：$uri", e); null
     }
+
+    /**
+     * Permanently delete the SAF document at [uri] from its folder. Irreversible —
+     * the caller MUST confirm with the user first. Needs the write permission taken
+     * when the folder was picked. Returns true on success.
+     */
+    fun deleteImage(ctx: Context, uri: Uri): Boolean = try {
+        DocumentsContract.deleteDocument(ctx.contentResolver, uri)
+    } catch (e: Exception) {
+        Log.e(TAG, "SAF 刪檔失敗：$uri", e); false
+    }
 }

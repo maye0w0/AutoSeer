@@ -36,10 +36,6 @@
             android:exported="false" />
 
         <activity
-            android:name=".ui.DebugActivity"
-            android:exported="false" />
-
-        <activity
             android:name=".ui.MoreActivity"
             android:exported="false" />
 
