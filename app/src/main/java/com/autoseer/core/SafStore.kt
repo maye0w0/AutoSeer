@@ -55,7 +55,7 @@ object SafStore {
     /**
      * List image files (name + URI) in the SAF [treeUri] folder, sorted by display
      * name — the same filename order the sweep uses as its default priority. Only
-     * entries whose MIME type is image/* are returned; failures yield an empty list.
+     * entries whose MIME type begins with "image/" are returned; failures yield [].
      */
     fun listImages(ctx: Context, treeUri: String): List<SafImage> {
         val tree = runCatching { Uri.parse(treeUri) }.getOrNull() ?: return emptyList()
