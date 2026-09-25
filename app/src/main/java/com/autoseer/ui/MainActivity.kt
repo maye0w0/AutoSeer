@@ -64,10 +64,10 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
         binding.btnMore.setOnClickListener {
-            startActivity(Intent(this, MoreActivity::class.java))
+            startActivity(Intent(this, FactorListActivity::class.java))
         }
         binding.btnDebug.setOnClickListener {
-            startActivity(Intent(this, DebugActivity::class.java))
+            startActivity(Intent(this, MoreActivity::class.java))
         }
 
         binding.btnAccessibility.setOnClickListener {

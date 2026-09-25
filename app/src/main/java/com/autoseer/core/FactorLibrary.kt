@@ -3,7 +3,6 @@ package com.autoseer.core
 import android.content.Context
 import android.graphics.BitmapFactory
 import android.net.Uri
-import android.provider.DocumentsContract
 import android.util.Log
 import com.autoseer.scripts.FactorTarget
 import org.opencv.android.Utils
@@ -16,50 +15,33 @@ import org.opencv.imgproc.Imgproc
  * grid.
  *
  * Name = file name without extension; the reference pattern is decoded to
- * grayscale (matching how screenshots are matched). Order = name-sorted. Phase 1
- * has no pick UI, so *every* image in the folder becomes a target in file-name
- * order — the user controls the set (and order) purely by what they capture/name.
+ * grayscale (matching how screenshots are matched). Listing order = file-name
+ * order. The set/order actually swept is decided by [FactorPlan] (the 因子關卡排序
+ * UI); with no saved plan every image is used, in file-name order.
  */
 object FactorLibrary {
     private const val TAG = "AutoSeer"
 
-    fun load(ctx: Context): List<FactorTarget> {
-        val treeStr = PetImagePrefs.treeUri(ctx) ?: return emptyList()
-        val tree = runCatching { Uri.parse(treeStr) }.getOrNull() ?: return emptyList()
-        val childrenUri = runCatching {
-            DocumentsContract.buildChildDocumentsUriUsingTree(
-                tree, DocumentsContract.getTreeDocumentId(tree),
-            )
-        }.getOrNull() ?: return emptyList()
-
-        val out = ArrayList<FactorTarget>()
-        runCatching {
-            ctx.contentResolver.query(
-                childrenUri,
-                arrayOf(
-                    DocumentsContract.Document.COLUMN_DOCUMENT_ID,
-                    DocumentsContract.Document.COLUMN_DISPLAY_NAME,
-                    DocumentsContract.Document.COLUMN_MIME_TYPE,
-                ),
-                null, null, null,
-            )?.use { c ->
-                val idIdx = 0; val nameIdx = 1; val mimeIdx = 2
-                while (c.moveToNext()) {
-                    val docId = c.getString(idIdx) ?: continue
-                    val name = c.getString(nameIdx) ?: continue
-                    val mime = c.getString(mimeIdx) ?: ""
-                    if (!mime.startsWith("image/")) continue
-                    val fileUri = DocumentsContract.buildDocumentUriUsingTree(tree, docId)
-                    val pattern = runCatching { decodeGray(ctx, fileUri) }.getOrNull()
-                    if (pattern == null) { Log.w(TAG, "圖庫圖片解碼失敗，略過：$name"); continue }
-                    out += FactorTarget(name.substringBeforeLast('.'), pattern)
-                }
-            }
-        }.onFailure { Log.e(TAG, "讀取精靈圖庫失敗", it) }
-
-        Log.i(TAG, "精靈圖庫載入 ${out.size} 張因子卡")
-        return out.sortedBy { it.name }
+    /** All images in the 精靈圖庫 folder (name + URI), file-name sorted. UI-facing. */
+    fun list(ctx: Context): List<SafImage> {
+        val tree = PetImagePrefs.treeUri(ctx) ?: return emptyList()
+        return SafStore.listImages(ctx, tree)
     }
+
+    /** Decode the given [images] (in order) to [FactorTarget]s; undecodable ones are skipped. */
+    fun loadTargets(ctx: Context, images: List<SafImage>): List<FactorTarget> {
+        val out = ArrayList<FactorTarget>(images.size)
+        for (img in images) {
+            val pattern = runCatching { decodeGray(ctx, img.uri) }.getOrNull()
+            if (pattern == null) { Log.w(TAG, "圖庫圖片解碼失敗，略過：${img.displayName}"); continue }
+            out += FactorTarget(img.displayName.substringBeforeLast('.'), pattern)
+        }
+        Log.i(TAG, "精靈圖庫載入 ${out.size} 張因子卡")
+        return out
+    }
+
+    /** Back-compat: every image in the folder, in file-name order. */
+    fun load(ctx: Context): List<FactorTarget> = loadTargets(ctx, list(ctx))
 
     private fun decodeGray(ctx: Context, uri: Uri): OpenCvPattern {
         val bmp = ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }

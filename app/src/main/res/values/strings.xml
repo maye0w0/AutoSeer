@@ -71,6 +71,9 @@
     <string name="home_settings">更多設定</string>
     <string name="home_more">更多選項</string>
     <string name="home_debug">Debug</string>
+    <string name="home_factor_order">因子關卡排序</string>
+    <string name="home_more_debug">更多選項 / Debug</string>
+    <string name="more_debug_title">更多選項 / Debug</string>
 
     <!-- 周回腳本（任務分類） -->
     <string name="missions_title">周回腳本</string>

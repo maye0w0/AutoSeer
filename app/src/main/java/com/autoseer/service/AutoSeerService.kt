@@ -28,7 +28,7 @@ import com.autoseer.overlay.ControlOverlay
 import com.autoseer.core.ScriptStore
 import com.autoseer.core.SeerScript
 import com.autoseer.runner.ScriptRunner
-import com.autoseer.core.FactorLibrary
+import com.autoseer.core.FactorPlan
 import com.autoseer.scripts.BattleScript
 import com.autoseer.scripts.BattlePlanParser
 import com.autoseer.scripts.FactorNavTestScript
@@ -160,9 +160,9 @@ class AutoSeerService : Service() {
         )
         parsed.warnings.forEach { Log.w(TAG, "計畫解析警告：$it") }
         val delays = DelayPrefs.toBattleDelays(this)
-        // 多因子銜接：讀「精靈圖庫」資料夾內所有因子卡當指定清單（Phase 1：依檔名順序，
-        // 空＝維持單因子舊行為）。此清單只驅動「選擇/進入」導航模組，不碰戰鬥模組。
-        val factorTargets = FactorLibrary.load(this)
+        // 多因子銜接：依「因子關卡排序」計畫取得要打的因子清單（FactorPlan：已勾選子集＋順序；
+        // 無計畫＝全部依檔名，維持開箱即用）。此清單只驅動「選擇/進入」導航模組，不碰戰鬥模組。
+        val factorTargets = FactorPlan.forSweep(this)
         overlay?.setStatus("腳本「${script.displayName}」 ${BattlePlanParser.describe(parsed.plan)}")
         runner.start { api ->
             if (script.category == SeerScript.CATEGORY_SEER_FACTOR) {
@@ -246,7 +246,7 @@ class AutoSeerService : Service() {
             overlay?.setStatus("⚠ 無障礙服務未連線，無法點擊。請先到設定開啟")
             return
         }
-        val targets = FactorLibrary.load(this)
+        val targets = FactorPlan.forSweep(this)
         if (targets.isEmpty()) {
             overlay?.setStatus("⚠ 圖庫沒有因子卡，請先用『擷取卡』存幾張再測")
             return
