@@ -51,6 +51,28 @@ class GestureAccessibilityService : AccessibilityService(), IGestureService {
         dispatch(path, 0, durationMs.coerceAtLeast(1))
     }
 
+    /**
+     * Fling-free drag: move from→to, then hold stationary for [holdMs] so the
+     * platform releases with ~zero velocity (no momentum fling). Implemented by
+     * chaining a stationary continuation stroke onto the move stroke.
+     */
+    override fun dragSteady(from: Location, to: Location, durationMs: Long, holdMs: Long) {
+        val moveDur = durationMs.coerceAtLeast(1)
+        val hold = holdMs.coerceAtLeast(1)
+        val move = Path().apply {
+            moveTo(from.x.toFloat(), from.y.toFloat())
+            lineTo(to.x.toFloat(), to.y.toFloat())
+        }
+        val holdPath = Path().apply {
+            moveTo(to.x.toFloat(), to.y.toFloat())
+            lineTo(to.x.toFloat(), to.y.toFloat() + 1f) // 1px so the stroke isn't degenerate
+        }
+        val s1 = GestureDescription.StrokeDescription(move, 0, moveDur, true)
+        val s2 = s1.continueStroke(holdPath, moveDur, hold, false)
+        val gesture = GestureDescription.Builder().addStroke(s1).addStroke(s2).build()
+        mainHandler.post { dispatchGesture(gesture, null, null) }
+    }
+
     private fun dispatch(path: Path, startMs: Long, durationMs: Long) {
         val stroke = GestureDescription.StrokeDescription(path, startMs, durationMs)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()

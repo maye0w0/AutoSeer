@@ -134,6 +134,19 @@ class AutomataApi(
         gestures.swipe(from.transform(normalizedSize, device), to.transform(normalizedSize, device), durationMs)
     }
 
+    /**
+     * Fling-free drag (holds briefly at the end) for precise list scrolling —
+     * advances by the drag distance instead of flinging past it. Coordinates are
+     * normalized like [swipe].
+     */
+    fun dragSteady(from: Location, to: Location, durationMs: Long = 700, holdMs: Long = 150) {
+        checkRunning()
+        val device = screenshotProvider.deviceSize()
+        gestures.dragSteady(
+            from.transform(normalizedSize, device), to.transform(normalizedSize, device), durationMs, holdMs,
+        )
+    }
+
     /** Sleep [ms], remaining responsive to stop requests. */
     fun sleep(ms: Long) {
         val step = 50L

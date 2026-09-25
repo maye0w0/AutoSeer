@@ -61,6 +61,9 @@ class AutoSeerService : Service() {
         override fun swipe(from: Location, to: Location, durationMs: Long) {
             GestureAccessibilityService.instance?.swipe(from, to, durationMs)
         }
+        override fun dragSteady(from: Location, to: Location, durationMs: Long, holdMs: Long) {
+            GestureAccessibilityService.instance?.dragSteady(from, to, durationMs, holdMs)
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
