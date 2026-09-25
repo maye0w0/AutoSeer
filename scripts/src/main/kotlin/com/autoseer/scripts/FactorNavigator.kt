@@ -66,8 +66,8 @@ class FactorNavigator(
         return isOnGrid()
     }
 
-    /** Drag upward (下→上) to reveal the next rows. Fling-free so it advances ~one
-     *  drag (≈0.8 row), not ~1.7 rows of momentum that skips cards. */
+    /** Drag upward (下→上) to reveal the next rows. Fling-free so it advances ~the
+     *  drag distance (≈0.6 row), not ~1.7 rows of momentum that skips cards. */
     fun scrollDownOneRow() {
         api.dragSteady(SeerLayout.GRID_SCROLL_BOTTOM, SeerLayout.GRID_SCROLL_TOP, GRID_SCROLL_MS, GRID_HOLD_MS)
         api.sleep(GRID_SETTLE_MS)
@@ -89,11 +89,11 @@ class FactorNavigator(
         maxScrolls: Int = MAX_SCROLLS,
         threshold: Double = MATCH_THRESHOLD,
     ): Boolean {
-        settleGrid()
-        findTargetOnScreen(target, threshold)?.let { return tapMatch(it, target) }
+        api.refreshScreen()
+        if (isOnGrid()) findTargetOnScreen(target, threshold)?.let { return tapMatch(it, target) }
         scrollToTop()
         for (attempt in 0..maxScrolls) {
-            settleGrid()
+            api.refreshScreen()
             if (!isOnGrid()) {
                 api.logger.w("因子導航：目前不在選擇格，無法比對定位")
                 return false
@@ -146,24 +146,6 @@ class FactorNavigator(
     private fun sameFrame(a: IPattern, b: IPattern): Boolean =
         api.similarity(a, b, ONE_SCALE) >= STABLE_SIM
 
-    /** 等畫面停穩（連續兩幀幾乎相同）再回；最多 [SETTLE_TRIES] 次，避免枯等。 */
-    private fun settleGrid() {
-        api.refreshScreen()
-        var prev = gridSample()
-        try {
-            repeat(SETTLE_TRIES) {
-                api.sleep(SETTLE_MS)
-                api.refreshScreen()
-                val cur = gridSample()
-                val same = sameFrame(prev, cur)
-                prev.close(); prev = cur
-                if (same) return
-            }
-        } finally {
-            prev.close()
-        }
-    }
-
     /** 往上捲到「畫面不再變化」＝已到列表頂端；最多 [MAX_REWIND] 次。 */
     private fun scrollToTop() {
         api.refreshScreen()
@@ -184,7 +166,7 @@ class FactorNavigator(
 
     companion object {
         private const val MAX_BACKS = 4
-        private const val MAX_SCROLLS = 26       // 每步≈0.8排，需較多步才到庫底
+        private const val MAX_SCROLLS = 34       // 每步≈0.6排、fling-free，需較多步才到庫底
         private const val MARKER_THRESHOLD = 0.70 // screen-id markers (video-derived; loose)
         private const val MATCH_THRESHOLD = 0.68  // card peak（實幀：命中≥0.90、未在畫面≤0.49）
         // 卡片在格上的實際尺寸（正規化）＋掃描尺度：模板縮到此範圍在全區滑動
@@ -193,16 +175,15 @@ class FactorNavigator(
         private val SCAN_SCALES = listOf(0.85, 0.92, 1.0, 1.08, 1.15)
         private val GRID_REGION = Region(210, 100, 1065, 620) // 卡片格整體區域（避開左欄/頂列頁籤）
         private const val CHROME_SETTLE_MS = 250L // 隱藏懸浮窗後等合成器把它移出畫面再截圖
-        private const val GRID_SCROLL_MS = 700L   // 拖曳移動時間
-        private const val GRID_HOLD_MS = 160L     // 拖曳結尾停頓＝消除 fling（1:1 前進≈0.8排）
-        private const val GRID_SETTLE_MS = 400L
+        // 捲動＝FGA 式不甩尾拖曳：GRID_SCROLL_MS 移動時間、GRID_HOLD_MS 抬起停頓（消 fling）。
+        private const val GRID_SCROLL_MS = 500L
+        private const val GRID_HOLD_MS = 350L
+        private const val GRID_SETTLE_MS = 320L   // 拖曳後固定短暫停頓再掃（取代不穩的 settle）
         private const val DETAIL_WAIT_MS = 6_000L
-        // 畫面穩定/到頂偵測
+        // 回頂偵測（掃到畫面不再變化＝到頂）
         private const val STABLE_SIM = 0.90       // 兩幀相似度≥此值＝視為同一畫面（容忍粒子動畫）
-        private const val MAX_REWIND = 15         // 回頂最多往上捲幾次（到頂即止）
-        private const val SETTLE_TRIES = 5        // 等停穩最多幾輪
-        private const val SETTLE_MS = 200L
+        private const val MAX_REWIND = 25         // 回頂最多往上捲幾次（到頂即止；每步較小故加大）
         private val ONE_SCALE = listOf(1.0)
-        private val GRID_SAMPLE = Region(216, 100, 900, 340) // 變化偵測取樣：頂列卡帶
+        private val GRID_SAMPLE = Region(216, 100, 900, 340) // 到頂偵測取樣：頂列卡帶
     }
 }
