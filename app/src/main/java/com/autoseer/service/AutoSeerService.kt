@@ -13,18 +13,36 @@ import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import com.autoseer.R
+import android.graphics.Bitmap
 import com.autoseer.capture.ScreenCaptureManager
 import com.autoseer.core.AndroidLogger
-import com.autoseer.core.AssetTemplates
+import com.autoseer.core.DelayPrefs
+import com.autoseer.core.RunPrefs
+import com.autoseer.core.DeviceTemplates
 import com.autoseer.core.OpenCvMatcher
+import com.autoseer.core.SeerStorage
 import com.autoseer.input.GestureAccessibilityService
 import com.autoseer.libautomata.IGestureService
 import com.autoseer.libautomata.Location
 import com.autoseer.overlay.ControlOverlay
-import com.autoseer.core.SeerPrefs
+import com.autoseer.core.ScriptStore
+import com.autoseer.core.SeerScript
 import com.autoseer.runner.ScriptRunner
+import com.autoseer.core.FactorLibrary
+import com.autoseer.core.FactorPlan
 import com.autoseer.scripts.BattleScript
+import com.autoseer.scripts.BattlePlan
 import com.autoseer.scripts.BattlePlanParser
+import com.autoseer.scripts.FactorTarget
+import com.autoseer.scripts.FactorNavTestScript
+import com.autoseer.scripts.FactorNavigator
+import com.autoseer.scripts.FactorSweepProgress
+import com.autoseer.scripts.FactorSweepRunner
+import com.autoseer.scripts.ProbeScript
+import com.autoseer.scripts.SeerFactorScript
+import com.autoseer.ui.CardCaptureActivity
+import java.io.File
+import java.io.FileOutputStream
 
 /**
  * Foreground service that owns the whole automation runtime: MediaProjection
@@ -45,6 +63,9 @@ class AutoSeerService : Service() {
         }
         override fun swipe(from: Location, to: Location, durationMs: Long) {
             GestureAccessibilityService.instance?.swipe(from, to, durationMs)
+        }
+        override fun dragSteady(from: Location, to: Location, durationMs: Long, holdMs: Long) {
+            GestureAccessibilityService.instance?.dragSteady(from, to, durationMs, holdMs)
         }
     }
 
@@ -75,6 +96,11 @@ class AutoSeerService : Service() {
     }
 
     private fun setup(resultCode: Int, data: Intent) {
+        // Re-authorizing while already running must not stack overlays/captures:
+        // release any previous runtime first (BUG-1), then build fresh from the
+        // new projection. This does not stop the service (no stopForeground/Self).
+        releaseRuntime()
+
         val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         val projection: MediaProjection = mpm.getMediaProjection(resultCode, data)
 
@@ -91,6 +117,10 @@ class AutoSeerService : Service() {
             context = this,
             onStart = { startScript() },
             onStop = { runner?.stop() },
+            onCapture = { captureFrame() },
+            onProbe = { probeDetection() },
+            onCaptureCards = { captureCardsForReview() },
+            onNavTest = { navTest() },
         )
         this.overlay = overlay
         val logger = AndroidLogger(onLine = { line -> overlay.setStatus(line) })
@@ -113,19 +143,146 @@ class AutoSeerService : Service() {
             Log.w(TAG, "無障礙服務未連線，取消啟動腳本")
             return
         }
-        val templates = AssetTemplates(this)
+        val templates = DeviceTemplates(this)
+        ScriptStore.ensureSeeded(this)
+        val script = ScriptStore.selected(this)
+        if (script == null) {
+            overlay?.setStatus("⚠ 尚未設定任何腳本，請先到「周回腳本」新增")
+            Log.w(TAG, "無選取腳本，取消啟動")
+            return
+        }
+        val delays = DelayPrefs.toBattleDelays(this)
+        val defaultPlan = parseFactorPlan(script)
+        overlay?.setStatus("腳本「${script.displayName}」 ${BattlePlanParser.describe(defaultPlan)}")
+        // 多因子銜接＋每因子腳本：依「因子關卡排序」取得(因子, 指派腳本)清單，對齊解出各自作戰計畫；
+        // 未指派＝跟隨主畫面所選腳本。此只驅動「選擇/進入」導航與挑哪個計畫，戰鬥回合引擎不受影響。
+        val entries = FactorPlan.resolvedEntries(this)
+        val imgByName = FactorLibrary.list(this).associateBy { it.displayName }
+        val factorTargets = ArrayList<FactorTarget>()
+        val factorPlans = ArrayList<BattlePlan>()
+        for (e in entries) {
+            val img = imgByName[e.name] ?: continue
+            val target = FactorLibrary.loadTargets(this, listOf(img)).firstOrNull() ?: continue
+            val scr = e.scriptId?.let { ScriptStore.get(this, it) } ?: script
+            factorTargets += target
+            factorPlans += parseFactorPlan(scr)
+        }
+        runner.start { api ->
+            if (script.category == SeerScript.CATEGORY_SEER_FACTOR) {
+                val sweep = if (factorTargets.isNotEmpty()) {
+                    api.logger.i("銜接模式：圖庫指定 ${factorTargets.size} 個因子（${factorTargets.joinToString("、") { it.name }}）")
+                    overlay?.setStatus("銜接模式：${factorTargets.size} 個指定因子")
+                    FactorSweepRunner(
+                        nav = FactorNavigator(api, templates, delays) { v -> overlay?.setChromeVisible(v) },
+                        progress = FactorSweepProgress(factorTargets),
+                        logger = api.logger,
+                    )
+                } else null
+                SeerFactorScript(
+                    api, templates, factorPlans.firstOrNull() ?: defaultPlan, delays,
+                    backToLobbyOnExhaust = RunPrefs.backToLobbyOnRetryExhausted(this),
+                    sweep = sweep,
+                    factorPlans = factorPlans.takeIf { it.isNotEmpty() },
+                    onProgress = { stageNo, cleared -> overlay?.setProgress(stageNo, cleared) },
+                )
+            } else {
+                BattleScript(api, templates, defaultPlan, delays)
+            }
+        }
+    }
+
+    /** Parse one saved script into a [BattlePlan] (script fields + global run options). */
+    private fun parseFactorPlan(script: SeerScript): BattlePlan {
         val parsed = BattlePlanParser.parse(
-            text = SeerPrefs.planText(this),
-            maxBattles = SeerPrefs.maxBattles(this),
-            healBeforeBattle = SeerPrefs.healBeforeBattle(this),
-            advanceMap = SeerPrefs.advanceMap(this),
-            defaultSlot = SeerPrefs.defaultSlot(this),
-            startStage = SeerPrefs.startStage(this),
-            maxRetriesPerStage = SeerPrefs.maxRetries(this),
+            text = script.planText,
+            maxBattles = script.maxBattles,
+            healBeforeBattle = RunPrefs.healBeforeBattle(this),
+            advanceMap = script.advanceMap,
+            defaultSlot = RunPrefs.defaultSlot(this),
+            startStage = RunPrefs.startStage(this),
+            maxRetriesPerStage = script.maxRetries,
         )
         parsed.warnings.forEach { Log.w(TAG, "計畫解析警告：$it") }
-        overlay?.setStatus("計畫 ${BattlePlanParser.describe(parsed.plan)}")
-        runner.start { api -> BattleScript(api, templates, parsed.plan) }
+        return parsed.plan
+    }
+
+    /** Save the current normalized color frame to <externalFilesDir>/captures for cropping into templates. */
+    private fun captureFrame() {
+        val cap = capture ?: run { overlay?.setStatus("尚未就緒，無法擷取"); return }
+        Thread {
+            try {
+                val bmp = cap.captureColorBitmap()
+                val dir = SeerStorage.capturesDir(this)
+                val file = File(dir, "cap_${System.currentTimeMillis()}.png")
+                FileOutputStream(file).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                bmp.recycle()
+                Log.i(TAG, "已存畫面：${file.absolutePath}")
+                overlay?.setStatus("已存畫面：${file.name}\n${dir.absolutePath}")
+            } catch (e: Throwable) {
+                Log.e(TAG, "存畫面失敗", e)
+                overlay?.setStatus("存畫面失敗：${e.message}")
+            }
+        }.start()
+    }
+
+    /**
+     * 精靈圖像卡擷取（階段 A）：對當前畫面截一張正規化彩圖，寫成暫存檔，開啟
+     * [CardCaptureActivity] 讓玩家檢視/修正候選卡框並存到自選資料夾。
+     */
+    private fun captureCardsForReview() {
+        val cap = capture ?: run { overlay?.setStatus("尚未就緒，無法擷取"); return }
+        // 先隱藏懸浮窗，避免面板出現在截圖裡遮住卡。
+        overlay?.setChromeVisible(false)
+        Thread {
+            try {
+                Thread.sleep(CHROME_HIDE_MS)   // 等合成器把面板移出畫面
+                val bmp = cap.captureColorBitmap()
+                overlay?.setChromeVisible(true)   // 抓到影格後即恢復懸浮窗
+                val file = File(cacheDir, "cardcap_${System.currentTimeMillis()}.png")
+                FileOutputStream(file).use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                bmp.recycle()
+                val intent = Intent(this, CardCaptureActivity::class.java).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    putExtra(CardCaptureActivity.EXTRA_PATH, file.absolutePath)
+                }
+                startActivity(intent)
+                overlay?.setStatus("已擷取畫面，開啟檢視頁裁卡")
+            } catch (e: Throwable) {
+                overlay?.setChromeVisible(true)
+                Log.e(TAG, "擷取卡失敗", e)
+                overlay?.setStatus("擷取卡失敗：${e.message}")
+            }
+        }.start()
+    }
+
+    /**
+     * 因子導航測試（不打戰鬥）：只跑「選擇→進入→退出→下一個因子（含捲動尋找）」的銜接
+     * 流程，用來單獨驗證導航，不呼叫戰鬥模組。目標＝精靈圖庫內所有因子卡。
+     */
+    private fun navTest() {
+        val runner = runner ?: return
+        if (!GestureAccessibilityService.isConnected) {
+            overlay?.setStatus("⚠ 無障礙服務未連線，無法點擊。請先到設定開啟")
+            return
+        }
+        val targets = FactorPlan.forSweep(this)
+        if (targets.isEmpty()) {
+            overlay?.setStatus("⚠ 圖庫沒有因子卡，請先用『擷取卡』存幾張再測")
+            return
+        }
+        val templates = DeviceTemplates(this)
+        val delays = DelayPrefs.toBattleDelays(this)
+        overlay?.setStatus("因子導航測試：${targets.size} 個因子（不打戰鬥，按停止結束）")
+        runner.start { api ->
+            FactorNavTestScript(api, templates, delays, targets) { v -> overlay?.setChromeVisible(v) }
+        }
+    }
+
+    /** Run the detection probe: report each template's match score without tapping anything. */
+    private fun probeDetection() {
+        val runner = runner ?: return
+        overlay?.setStatus("偵測測試中…（結果見狀態列/Logcat）")
+        runner.start { api -> ProbeScript(api, DeviceTemplates(this)) }
     }
 
     private fun startForegroundInternal() {
@@ -159,13 +316,18 @@ class AutoSeerService : Service() {
         }
     }
 
-    private fun stopEverything() {
+    /** Tear down the capture/overlay/runner without stopping the service itself. */
+    private fun releaseRuntime() {
         runner?.stop()
         overlay?.hide()
         capture?.release()
         runner = null
         overlay = null
         capture = null
+    }
+
+    private fun stopEverything() {
+        releaseRuntime()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
             stopForeground(STOP_FOREGROUND_REMOVE)
         } else {
@@ -182,6 +344,7 @@ class AutoSeerService : Service() {
     companion object {
         private const val TAG = "AutoSeer"
         private const val NOTIF_ID = 1001
+        private const val CHROME_HIDE_MS = 150L   // 擷取前隱藏懸浮窗、等畫面更新的時間
         const val EXTRA_RESULT_CODE = "result_code"
         const val EXTRA_DATA = "result_data"
         const val ACTION_STOP = "com.autoseer.action.STOP"

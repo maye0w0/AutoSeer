@@ -16,6 +16,15 @@ interface IScreenshotProvider {
 interface IGestureService {
     fun click(location: Location, durationMs: Long = 50)
     fun swipe(from: Location, to: Location, durationMs: Long = 300)
+
+    /**
+     * Like [swipe] but ends with the pointer held stationary for [holdMs] so the
+     * platform sees ~zero release velocity — a fling-free, 1:1 drag. Used for
+     * precise list scrolling (a normal swipe flings ~2× the drag distance). Default
+     * falls back to [swipe] for impls/tests that don't need it.
+     */
+    fun dragSteady(from: Location, to: Location, durationMs: Long = 700, holdMs: Long = 150) =
+        swipe(from, to, durationMs)
 }
 
 /** Matches a [template] within an [image]; both share a coordinate space. */

@@ -19,6 +19,14 @@ class AutomataApi(
 ) {
     companion object {
         const val DEFAULT_THRESHOLD = 0.8
+
+        /**
+         * Scales tried when comparing two on-screen crops with [similarity].
+         * The 場上精靈頭像 is larger than the 換精靈卡頭像, so the template is both
+         * shrunk and grown a little to find the best fit. Tune against real
+         * device captures if matches come back weak.
+         */
+        val DEFAULT_SCALES: List<Double> = listOf(0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3)
     }
 
     private var currentScreen: IPattern? = null
@@ -71,6 +79,46 @@ class AutomataApi(
         threshold: Double = DEFAULT_THRESHOLD,
     ): Boolean = find(template, region, threshold) != null
 
+    /**
+     * Crop [region] out of the current screen as a standalone pattern. The
+     * caller owns it and must [IPattern.close] it. Use this to remember an
+     * on-screen area now (e.g. a 換精靈卡頭像) and compare it against a later
+     * screen with [similarity] — no pre-stored template needed.
+     */
+    fun cropScreen(region: Region): IPattern {
+        checkRunning()
+        return screen().crop(region)
+    }
+
+    /**
+     * How well [a] matches somewhere inside [b], as the best normalized
+     * template-match score (0..1) over [scales] (a is resized and slid across
+     * b). Used to test whether two captured crops show the same art — e.g. a
+     * remembered 換精靈卡頭像 vs the current 場上精靈頭像 — tolerating the size and
+     * position differences between the two UI spots. Returns -1.0 if no scale
+     * of [a] fits within [b].
+     */
+    fun similarity(a: IPattern, b: IPattern, scales: List<Double> = DEFAULT_SCALES): Double {
+        checkRunning()
+        // Slide the SMALLER crop (as template) across the larger one; a template
+        // bigger than the searched image fits no scale and would always return -1.
+        val (tmpl, img) =
+            if (a.width.toLong() * a.height <= b.width.toLong() * b.height) a to b else b to a
+        var best = -1.0
+        for (s in scales) {
+            val w = (tmpl.width * s).toInt()
+            val h = (tmpl.height * s).toInt()
+            if (w < 4 || h < 4 || w > img.width || h > img.height) continue
+            tmpl.resize(Size(w, h)).use { scaled ->
+                // threshold below any CCOEFF_NORMED value so the top peak is always returned
+                matcher.match(img, scaled, -1.0).firstOrNull()?.let { m ->
+                    if (m.score > best) best = m.score
+                }
+            }
+        }
+        return best
+    }
+
     fun click(location: Location, durationMs: Long = 50) {
         checkRunning()
         val device = location.transform(normalizedSize, screenshotProvider.deviceSize())
@@ -84,6 +132,19 @@ class AutomataApi(
         checkRunning()
         val device = screenshotProvider.deviceSize()
         gestures.swipe(from.transform(normalizedSize, device), to.transform(normalizedSize, device), durationMs)
+    }
+
+    /**
+     * Fling-free drag (holds briefly at the end) for precise list scrolling —
+     * advances by the drag distance instead of flinging past it. Coordinates are
+     * normalized like [swipe].
+     */
+    fun dragSteady(from: Location, to: Location, durationMs: Long = 700, holdMs: Long = 150) {
+        checkRunning()
+        val device = screenshotProvider.deviceSize()
+        gestures.dragSteady(
+            from.transform(normalizedSize, device), to.transform(normalizedSize, device), durationMs, holdMs,
+        )
     }
 
     /** Sleep [ms], remaining responsive to stop requests. */

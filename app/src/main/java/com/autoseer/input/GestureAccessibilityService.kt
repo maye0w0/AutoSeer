@@ -3,12 +3,15 @@ package com.autoseer.input
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import com.autoseer.libautomata.IGestureService
 import com.autoseer.libautomata.Location
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Injects taps and swipes via the Accessibility gesture API (no root needed).
@@ -51,6 +54,65 @@ class GestureAccessibilityService : AccessibilityService(), IGestureService {
         dispatch(path, 0, durationMs.coerceAtLeast(1))
     }
 
+    /**
+     * Fling-free drag, modelled on FGA's `swipe8`: a finger-down settle, then the
+     * move split into many small continued sub-strokes (human-like, no flick), then
+     * a finger-up hold so the platform releases with ~zero velocity — no momentum
+     * fling, so the list advances by the drag distance (1:1) instead of overshooting.
+     *
+     * Continued strokes must be dispatched one at a time, each after the previous
+     * completes (the finger stays down between them via willContinue=true) — they
+     * can NOT be added to a single GestureDescription. So each stroke is dispatched
+     * and awaited before the next. Falls back to a plain [swipe] below API 26.
+     */
+    override fun dragSteady(from: Location, to: Location, durationMs: Long, holdMs: Long) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            swipe(from, to, durationMs); return
+        }
+        val fx = from.x.toFloat(); val fy = from.y.toFloat()
+        val tx = to.x.toFloat(); val ty = to.y.toFloat()
+        val moveMs = (durationMs / SEGMENTS).coerceAtLeast(1)
+        val upHold = holdMs.coerceAtLeast(1)
+
+        // 1) finger down + brief settle (no movement)
+        var stroke = GestureDescription.StrokeDescription(Path().apply { moveTo(fx, fy) }, 0, DOWN_HOLD_MS, true)
+        if (!dispatchAndWait(stroke)) return
+
+        // 2) segmented linear move
+        var px = fx; var py = fy
+        for (i in 1..SEGMENTS) {
+            val t = i.toFloat() / SEGMENTS
+            val nx = fx + (tx - fx) * t
+            val ny = fy + (ty - fy) * t
+            stroke = stroke.continueStroke(Path().apply { moveTo(px, py); lineTo(nx, ny) }, 0, moveMs, true)
+            if (!dispatchAndWait(stroke)) return
+            px = nx; py = ny
+        }
+
+        // 3) finger up hold (stationary → zero release velocity → no fling)
+        stroke = stroke.continueStroke(Path().apply { moveTo(px, py); lineTo(px, py + 1f) }, 0, upHold, false)
+        dispatchAndWait(stroke)
+    }
+
+    /** Dispatch one stroke and block until the gesture completes/cancels (or times out). */
+    private fun dispatchAndWait(stroke: GestureDescription.StrokeDescription): Boolean {
+        val gesture = GestureDescription.Builder().addStroke(stroke).build()
+        val latch = CountDownLatch(1)
+        var ok = false
+        val callback = object : AccessibilityService.GestureResultCallback() {
+            override fun onCompleted(g: GestureDescription?) { ok = true; latch.countDown() }
+            override fun onCancelled(g: GestureDescription?) { ok = false; latch.countDown() }
+        }
+        mainHandler.post {
+            if (!dispatchGesture(gesture, callback, mainHandler)) { ok = false; latch.countDown() }
+        }
+        return try {
+            latch.await(GESTURE_TIMEOUT_MS, TimeUnit.MILLISECONDS) && ok
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt(); false
+        }
+    }
+
     private fun dispatch(path: Path, startMs: Long, durationMs: Long) {
         val stroke = GestureDescription.StrokeDescription(path, startMs, durationMs)
         val gesture = GestureDescription.Builder().addStroke(stroke).build()
@@ -59,6 +121,9 @@ class GestureAccessibilityService : AccessibilityService(), IGestureService {
 
     companion object {
         private const val TAG = "AutoSeer"
+        private const val SEGMENTS = 10          // 把移動切成幾段（模擬真人、避免被判成快速甩動）
+        private const val DOWN_HOLD_MS = 150L     // 手指按下後的停頓
+        private const val GESTURE_TIMEOUT_MS = 3000L
 
         @Volatile
         var instance: GestureAccessibilityService? = null
